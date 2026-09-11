@@ -69,7 +69,9 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 │   ├── FREESWITCH_TEST_PLAN.md
 │   ├── PI4_CENTOS9.md
 │   ├── POWERSHELL.md
-│   └── RELEASE_DAY.md
+│   ├── RELEASE_DAY.md
+│   ├── RELEASE_RECORD.md
+│   └── RELEASE_RECORD_TEMPLATE.md
 └── scripts/
     ├── lib/common.sh
     ├── 00-admin-laptop-preflight.sh
@@ -87,6 +89,7 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
     └── powershell/
         ├── 00-setup-environment.ps1
         ├── 00-admin-laptop-preflight.ps1
+        ├── 01-create-release-record.ps1
         ├── Invoke-PiosRemoteStage.ps1
         ├── 02-full-sd-backup.ps1
         ├── Copy-PiosArtifacts.ps1
@@ -139,6 +142,28 @@ Required result:
 ENVIRONMENT_SETUP=PASS
 ```
 
+### Create the electronic release record
+
+You do **not** need to print the release-day document. After pinning the Git commit, generate a dated local Markdown record and keep it open while you work.
+
+For Pi 4 / CentOS 9:
+
+```powershell
+pwsh .\scripts\powershell\01-create-release-record.ps1 `
+  -Profile PI4-CENTOS9 `
+  -Target <user@passive-pi-ip> `
+  -Active <user@active-pi-ip> `
+  -Router <router-ip> `
+  -Site '<site-name>' `
+  -ChangeReference '<change-reference>' `
+  -SdDevice /dev/mmcblk0 `
+  -DebianImage 'C:\pios-images\pios-debian13-arm64.img.xz'
+```
+
+The script performs read-only SSH discovery, records the exact Git commit, target/active host identity, Pi model, current OS, architecture, MAC, SD capacity and Debian image SHA512, and checks that the selected migration profile matches the target. A mismatch creates the evidence file but returns `RELEASE_PROFILE_GATE=NO-GO`.
+
+Generated records are written under `releases/` by default and are ignored by Git. See `docs/RELEASE_RECORD.md` and `docs/RELEASE_RECORD_TEMPLATE.md`.
+
 Run the Windows preflight with:
 
 ```powershell
@@ -153,11 +178,11 @@ For two 32 GB SD cards, **80 GB free on the laptop is the recommended working mi
 
 ## Release-day document
 
-Use `docs/RELEASE_DAY.md` as the operator's **on-the-day change document**. Record the selected migration profile, Pi model and current CentOS version at the start of the change. A profile mismatch is a NO-GO.
+Use `docs/RELEASE_DAY.md` as the operator's **on-the-day change procedure**. Use the generated file under `releases/` as the live electronic evidence record. Record the selected migration profile, Pi model and current CentOS version at the start of the change. A profile mismatch is a NO-GO.
 
 It contains Git clone/fetch/pull and exact release-commit pinning, change-record fields, the 3-4 hour first-passive-node window, PowerShell commands in release order, GO/NO-GO gates, destructive-change checkpoint, rollback decisions and a separate production-failover release after soak.
 
-The full `docs/RUNBOOK.md` remains the engineering reference. `RELEASE_DAY.md` is intended to be the shorter document followed during the maintenance window.
+The full `docs/RUNBOOK.md` remains the engineering reference. `RELEASE_DAY.md` is the procedure followed during the maintenance window; the generated release record is the evidence you update as you go.
 
 ## Administration laptop prerequisite
 
