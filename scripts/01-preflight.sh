@@ -32,9 +32,29 @@ printf 'kernel=%s\n' "$(uname -r)"
 printf 'root=%s\n' "$ROOT"
 printf 'target=%s\n' "$TARGET_DISK"
 
+if [[ -n "${EXPECTED_ARCH:-}" ]]; then
+  [[ "$ARCH" =~ ^(${EXPECTED_ARCH})$ ]] || fatal "Architecture mismatch: '$ARCH' does not match '$EXPECTED_ARCH'."
+  log "Architecture gate PASS: $ARCH"
+fi
+
 printf '\n===== OS =====\n'
 cat /etc/os-release 2>/dev/null || true
 cat /etc/centos-release 2>/dev/null || true
+
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  if [[ -n "${EXPECTED_SOURCE_OS_ID:-}" ]]; then
+    [[ "${ID:-}" == "$EXPECTED_SOURCE_OS_ID" ]] || fatal "Source OS mismatch: ID=${ID:-unknown}, expected $EXPECTED_SOURCE_OS_ID."
+    log "Source OS ID gate PASS: ${ID:-unknown}"
+  fi
+  if [[ -n "${EXPECTED_SOURCE_OS_VERSION:-}" ]]; then
+    [[ "${VERSION_ID:-}" == "$EXPECTED_SOURCE_OS_VERSION" ]] || fatal "Source OS version mismatch: VERSION_ID=${VERSION_ID:-unknown}, expected $EXPECTED_SOURCE_OS_VERSION."
+    log "Source OS version gate PASS: ${VERSION_ID:-unknown}"
+  fi
+else
+  [[ -z "${EXPECTED_SOURCE_OS_ID:-}${EXPECTED_SOURCE_OS_VERSION:-}" ]] || fatal "Cannot verify expected source OS because /etc/os-release is missing."
+fi
 
 printf '\n===== STORAGE =====\n'
 lsblk -o NAME,MAJ:MIN,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT,MODEL,SERIAL

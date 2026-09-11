@@ -6,6 +6,7 @@ config/site.env
 artifacts/
 backup/
 backups/
+releases/
 *.img
 *.img.xz
 *.img.gz

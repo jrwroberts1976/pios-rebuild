@@ -2,51 +2,43 @@
 
 ## Objective
 
-Replace CentOS 7 on both remote Raspberry Pi 3 FreeSWITCH nodes with Debian 13 while maintaining service continuity and preserving a practical rollback path.
+Replace the current CentOS installations on remote two-node Raspberry Pi FreeSWITCH sites with Debian 13 while maintaining service continuity and preserving a practical rollback path.
+
+## Supported source profiles
+
+| Profile | Current hardware / OS | Target |
+| --- | --- | --- |
+| `PI3-CENTOS7` | Raspberry Pi 3 / CentOS 7 | Debian 13 arm64 |
+| `PI4-CENTOS9` | Raspberry Pi 4 / CentOS 9 | Debian 13 arm64 |
+
+The workflow is shared, but the rescue environment and hardware validation are profile-specific. A Pi 3 / CentOS 7 rescue test does not approve a Pi 4 / CentOS 9 migration. See `PI4_CENTOS9.md` for the Pi 4 profile.
 
 ## Key design
 
-The site has two Pi nodes. The passive node is the proving node. The active CentOS node remains untouched and continues to provide service while the passive node is rebuilt, tested and soaked. Only after the Debian passive node is proven do we perform service failover. The former active node is rebuilt last.
+Each site has two Pi nodes. The passive node is the proving node. The active CentOS node remains untouched and continues to provide service while the passive node is rebuilt, tested and soaked. Only after the Debian passive node is proven do we perform service failover. The former active node is rebuilt last.
 
 ## Prerequisites
 
 ### Administration laptop/workstation
 
-The laptop used to connect through the site VPN is part of the recovery design and must pass `docs/ADMIN_LAPTOP_PREREQUISITES.md` before either Pi is touched.
+The laptop used to connect through the site router-hosted VPN is part of the recovery design and must pass `ADMIN_LAPTOP_PREREQUISITES.md` before either Pi is touched.
 
-At minimum it must have:
+At minimum it must have stable VPN access, key-based SSH to both nodes, the required PowerShell/OpenSSH/Git or Linux/WSL tools, protected local storage for rollback images and migration artifacts, mains power, sleep/hibernate disabled and the repository checked out at an exact recorded commit.
 
-- stable router-hosted VPN access to the remote site;
-- key-based SSH access to both Pi nodes;
-- SSH/SCP or SFTP, rsync, Git, curl/wget, tar, gzip, xz, zstd, checksum tools, `dd` and `pv`;
-- enough protected local disk space for both full SD-card images, the Debian image, FreeSWITCH exports and test evidence;
-- mains power and sleep/hibernate disabled during migration;
-- the migration repository checked out at a known commit;
-- the verified CentOS rollback images immediately accessible throughout the migration.
-
-Run:
-
-```bash
-./scripts/00-admin-laptop-preflight.sh \
-  --router <router-ip> \
-  --active <user@active-pi-ip> \
-  --passive <user@passive-pi-ip> \
-  --min-free-gb <calculated-minimum>
-```
-
-**Exit gate:** `ADMIN_LAPTOP_PREFLIGHT=PASS` and the manual power/sleep/VPN gates are confirmed.
+Both Pi estates use 32 GB SD cards. When retaining both full raw card images on the workstation, **80 GB free space is the recommended release-day minimum**.
 
 ### Site and platform prerequisites
 
-1. Confirm router-hosted VPN remains available independently of either Pi.
-2. Confirm both Pi roles, IPs, MAC addresses, hostnames and current FreeSWITCH responsibilities.
-3. Export and securely copy off-node the complete FreeSWITCH configuration/runtime manifest from **each** node using `scripts/02a-export-freeswitch-config.sh`.
-4. Capture SIP trunk, extension, gateway, codec, dialplan, ACL, NAT, RTP, certificate, script and firewall requirements.
-5. Build a reproducible Debian 13 arm64 image containing the required operating-system/migration tooling and chosen FreeSWITCH 1.11.x packages where practical.
-6. Test the exact image and FreeSWITCH on Debian 13 before any production failover.
-7. Verify `kexec` support and build/test a RAM-rescue environment on the passive node.
-8. Take an off-node full SD-card image before destructive work.
-9. Keep the active CentOS node untouched until the passive Debian node has passed production soak.
+1. Select the correct migration profile and verify the expected Pi model and source CentOS version.
+2. Confirm router-hosted VPN remains available independently of either Pi.
+3. Confirm both Pi roles, IPs, MAC addresses, hostnames and current FreeSWITCH responsibilities.
+4. Export and securely copy off-node the complete FreeSWITCH configuration/runtime manifest from **each** node.
+5. Capture SIP trunk, extension, gateway, codec, dialplan, ACL, NAT, RTP, certificate, script and firewall requirements.
+6. Build a reproducible Debian 13 arm64 image containing the required operating-system/migration tooling and chosen FreeSWITCH packages where practical.
+7. Test the exact image and FreeSWITCH on representative hardware for the selected profile.
+8. Verify `kexec` support and build/test a RAM-rescue environment on the passive node for that profile.
+9. Take an off-node full 32 GB SD-card image before destructive work.
+10. Keep the active CentOS node untouched until the passive Debian node has passed production soak.
 
 ## Workstreams
 
@@ -55,45 +47,43 @@ Run:
 - establish and test the router VPN;
 - verify SSH keys against both nodes;
 - install required local CLI tools;
-- calculate storage required from the actual SD-card capacities;
+- verify at least 80 GB free when using the two-card rollback workflow;
 - create protected artifact directories;
+- update the repository using `git pull --ff-only` before the change;
 - record the exact repository commit used;
-- verify the laptop will remain powered and awake;
+- make no further Git updates during the release;
 - prove the VPN is stable enough for sustained backup/image transfer.
 
 **Exit gate:** workstation preflight passes and rollback artifacts can be retained locally throughout the change.
 
 ### WS1 - Discovery and baseline
 
+- Select `PI3-CENTOS7` or `PI4-CENTOS9`.
 - Run preflight on both nodes.
-- Record active/passive state.
-- Record current network configuration.
-- Export FreeSWITCH configuration and runtime status from both nodes.
-- Record package/service inventory.
-- Record call-flow and trunk dependencies.
+- Prove model, architecture and source OS version match the selected profile.
+- Record active/passive state and network configuration.
+- Export FreeSWITCH configuration/runtime status from both nodes.
+- Record package/service inventory and call-flow dependencies.
 - Establish acceptance criteria and rollback triggers.
 
-**Exit gate:** Both nodes fully identified; current service behaviour documented; both FreeSWITCH exports copied to secure off-node storage and checksums verified.
+**Exit gate:** both nodes fully identified, profile matches, current service behaviour documented and FreeSWITCH exports copied to secure off-node storage with verified checksums.
 
 ### WS2 - FreeSWITCH configuration migration package
 
 For each CentOS node:
 
-- identify the actual FreeSWITCH configuration root (`/etc/freeswitch` or `/usr/local/freeswitch/conf`);
-- archive the complete configuration tree preserving permissions/metadata;
-- capture FreeSWITCH version;
-- capture loaded modules;
-- capture Sofia profile/gateway state;
-- capture installed FreeSWITCH package list;
+- identify the actual FreeSWITCH configuration root;
+- archive the complete configuration tree preserving metadata;
+- capture FreeSWITCH version, loaded modules, Sofia profile/gateway state and installed package list;
 - capture supplementary scripts/data paths where present;
 - create and verify archive checksums;
 - copy the export away from the node before rebuild.
 
 The export is a **sensitive artifact** because it may contain SIP credentials, event-socket passwords, certificates/provider information and other secrets. It must never be committed to GitHub.
 
-On Debian, install/reconcile the required FreeSWITCH modules first, then use `scripts/07a-restore-freeswitch-config.sh` to back up the fresh Debian config and overlay the exported site config. Any CentOS-to-Debian module/package difference must be resolved before production testing.
+On Debian, install/reconcile the required FreeSWITCH modules first, then use `07a-restore-freeswitch-config.sh` to back up the fresh Debian config and overlay the exported site config. CentOS 7 and CentOS 9 may differ in package/service/network/firewall details; do not assume an OS-level one-for-one copy.
 
-**Exit gate:** Export/restore procedure demonstrated on a non-production or passive Debian test instance and all required site modules identified.
+**Exit gate:** export/restore procedure demonstrated on a non-production or passive Debian test instance and all required site modules identified.
 
 ### WS3 - Debian image engineering
 
@@ -104,64 +94,44 @@ On Debian, install/reconcile the required FreeSWITCH modules first, then use `sc
 - Prepare SSH key injection and network configuration process.
 - Add the selected FreeSWITCH installation/bootstrap mechanism.
 - Produce an image manifest and checksum.
-- Ensure any temporary package-repository credential used during image construction is removed before the artifact is finalised.
+- Ensure any temporary repository credential used during image construction is removed before finalisation.
+- Boot-test the exact resulting image on each Raspberry Pi hardware family on which it will be deployed.
 
-**Exit gate:** Reproducible image passes image validation and boots successfully on representative Raspberry Pi 3 hardware where available.
+**Exit gate:** reproducible image passes validation on the target profile hardware: Pi 3 for `PI3-CENTOS7`, Pi 4 for `PI4-CENTOS9`.
 
 ### WS4 - FreeSWITCH Debian validation
 
-The project must prove the exact selected FreeSWITCH version, modules, migrated configuration and telephony behaviour required by this site on Debian 13.
+Validate service start, `fs_cli`, required modules, migrated configuration, SIP profiles, endpoint registration, gateways/trunks, inbound/outbound calls, two-way RTP/audio, DTMF, codec negotiation, caller ID, failover behaviour, logs/monitoring and reboot persistence.
 
-Validate:
-
-- service starts cleanly;
-- `fs_cli` works;
-- required modules load;
-- migrated configuration loads without unresolved errors;
-- SIP profiles start;
-- internal endpoints can register;
-- gateways/trunks register or reach the expected state;
-- inbound calls route correctly;
-- outbound calls route correctly;
-- two-way RTP/audio works;
-- DTMF works;
-- codec negotiation matches production requirements;
-- caller ID and number presentation are correct;
-- failover behaviour is understood;
-- logs and monitoring are available;
-- reboot preserves service.
-
-**Exit gate:** Test plan passes with no unresolved Severity 1 or Severity 2 defects.
+**Exit gate:** test plan passes with no unresolved Severity 1 or Severity 2 defects.
 
 ### WS5 - RAM-rescue proof on passive node
 
-- Build rescue initramfs using the currently working CentOS kernel/modules where practical.
+- Build rescue initramfs using a kernel/modules combination suitable for the selected hardware/source-OS profile.
 - Configure rescue SSH on a separate port.
 - Load with `kexec` without executing first.
 - Validate loaded rescue metadata.
-- Enter rescue.
-- Reconnect over router VPN.
-- Prove networking, SSH and SD-card visibility.
+- Enter rescue and reconnect over router VPN.
+- Prove networking, SSH, RAM-root and SD-card visibility.
 - Reboot without changing the SD card.
-- Prove CentOS returns.
+- Prove the original CentOS version returns.
 
-**Exit gate:** CentOS -> RAM rescue -> CentOS round trip passes.
+**Exit gate:** `CentOS -> RAM rescue -> same CentOS` round trip passes on the exact target profile.
 
 ### WS6 - Passive-node rebuild
 
 - Take/verify final off-node backup and FreeSWITCH export.
-- Enter already-proven RAM rescue.
-- Verify target device and that it is unmounted.
-- Stream the verified Debian image to the whole SD-card device.
+- Enter already-proven profile-specific RAM rescue.
+- Verify the whole target device and that it/its children are unmounted.
+- Stream/write the verified Debian image to the whole SD-card device.
 - Mount and inspect the new Debian filesystems while rescue remains alive.
 - Apply node-specific network/SSH/hostname configuration.
-- Reboot into Debian.
-- Validate Debian.
-- Ensure the required FreeSWITCH package/module set is installed.
+- Reboot into Debian and validate Debian.
+- Ensure required FreeSWITCH packages/modules are installed.
 - Restore the passive node's saved FreeSWITCH configuration.
 - Run FreeSWITCH smoke/functional tests.
 
-**Exit gate:** Passive node is reachable, FreeSWITCH configuration is restored and validated, and the node is ready for controlled service testing.
+**Exit gate:** passive node is reachable, Debian validation passes, FreeSWITCH configuration is restored/validated and the node is ready for controlled service testing.
 
 ### WS7 - Passive-node soak and controlled failover
 
@@ -169,7 +139,7 @@ Validate:
 - Exercise Debian node using test endpoints/routes where possible.
 - Observe CPU, memory, storage, temperature, SIP registrations, RTP and logs.
 - Run repeated reboot tests.
-- Perform a controlled production failover to the Debian node.
+- Perform a controlled production failover only after soak approval.
 - Confirm all critical call paths.
 
 **Exit gate:** Debian node carries production service successfully for the agreed soak period.
@@ -177,69 +147,45 @@ Validate:
 ### WS8 - Former-active rebuild
 
 - Keep the now-active Debian node in service.
-- Re-export the former active node's FreeSWITCH configuration immediately before migration if configuration may have changed since baseline.
-- Repeat the proven backup/rescue/rebuild process on the former active node.
+- Re-export the former active node's FreeSWITCH configuration immediately before migration if configuration may have changed.
+- Repeat the proven backup/rescue/rebuild process using the same profile.
 - Restore that node's own FreeSWITCH configuration and passive role.
 - Re-establish resilience and test failback/failover.
 
-**Exit gate:** Both nodes are Debian 13 and active/passive resilience is restored.
+**Exit gate:** both nodes are Debian 13 and active/passive resilience is restored.
 
-## Indicative test timeline
-
-This is an elapsed testing plan, not a promise of implementation duration.
+## Indicative timeline
 
 | Stage | Indicative window | Purpose |
 | --- | ---: | --- |
 | Admin laptop/VPN readiness | 1-2 hours | Tooling, storage, keys and sustained connectivity |
-| Discovery + FreeSWITCH config export | 0.5 day | Capture current state, config and hard prerequisites |
+| Discovery + FreeSWITCH export | 0.5 day | Capture current state and hard prerequisites |
 | Golden image build + static validation | 0.5-1 day | Produce repeatable Debian image |
-| FreeSWITCH Debian/config-restore tests | 1 day | Prove packages/modules, restored config and basic calling |
-| Passive rescue round-trip test | 0.5 day | Prove remote recovery mechanism |
-| Passive Debian rebuild + config restore + smoke tests | 0.5 day | Perform first production-site rebuild |
+| Hardware-specific image + FreeSWITCH tests | 1 day | Prove target Pi family and telephony behaviour |
+| Passive rescue round-trip test | 0.5 day | Prove profile-specific remote recovery mechanism |
+| First passive rebuild | 3-4 hours | First production-site migration for that profile |
 | Passive soak/test traffic | 24-48 hours | Catch stability, registration, RTP and resource issues |
-| Controlled failover + production acceptance | 1-2 hours | Move live service to Debian node and validate |
+| Controlled failover + acceptance | 1-2 hours | Move live service to Debian and validate |
 | Production soak | 48 hours | Confirm sustained stability under real traffic |
-| Former-active rebuild | 0.5 day | Rebuild second node using proven process |
+| Second-node rebuild | 1.5-2.5 hours typical | Repeat proven process on former active node |
 | Dual-node/failover acceptance | 0.5 day | Restore and prove resilience |
 
-A cautious end-to-end programme is approximately **5-7 elapsed days**, largely because of the 24-48 hour passive observation period and 48 hour production soak. Hands-on engineering time is materially lower than the elapsed time.
+A cautious end-to-end programme remains approximately **5-7 elapsed days**, largely because of the passive and production soak periods. Hands-on engineering time is materially lower.
 
 ## Rollback strategy
 
-### Before SD overwrite
-
-Normal reboot returns to CentOS.
-
-### During RAM-rescue write/configuration
-
-If rescue remains alive and Debian is not satisfactory, restore the previously captured full CentOS SD image over the VPN, sync, then reboot.
-
-### After Debian successfully boots but before failover
-
-The active CentOS node remains in service. Rebuild or restore the passive node without production service impact.
-
-### FreeSWITCH configuration restore
-
-`07a-restore-freeswitch-config.sh` first backs up the fresh Debian FreeSWITCH configuration. If the migrated configuration is incompatible, restore that fresh config, correct package/module differences, or rebuild the passive node while production remains on CentOS.
-
-### After failover
-
-If Debian production acceptance fails, restore service to the untouched CentOS active node, provided it has not yet been rebuilt.
-
-### Second-node migration
-
-Do not rebuild the original active CentOS node until the Debian node has completed production soak and rollback confidence is acceptable.
+Before SD overwrite, normal reboot returns to the existing CentOS installation. During RAM-rescue write/configuration, if rescue remains alive and Debian is not satisfactory, restore the verified full-card image for that node and reboot. After Debian boots but before failover, the active CentOS peer remains in service. After failover, restore service to the untouched CentOS peer if production acceptance fails. Do not rebuild the original active node until the Debian node has completed production soak.
 
 ## Definition of done
 
 - Administration laptop prerequisite gate passed and evidence recorded.
+- Selected profile matches the actual Pi model and source CentOS version.
 - Both Raspberry Pi nodes run Debian 13.
 - Required FreeSWITCH version/modules are installed and documented.
 - Each node's intended FreeSWITCH configuration has been exported, restored and validated.
-- All critical inbound/outbound call paths pass.
-- RTP/DTMF/codec behaviour passes.
+- All critical inbound/outbound call paths, RTP/DTMF/codec behaviour pass.
 - Monitoring/logging/backup requirements pass.
 - Active/passive failover and failback are demonstrated.
 - Reboot tests pass on both nodes.
-- No CentOS 7 production dependency remains.
+- No CentOS production dependency remains.
 - Runbook and test evidence are updated with actual site values.
