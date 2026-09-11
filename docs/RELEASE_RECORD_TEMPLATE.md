@@ -1,6 +1,19 @@
 # Raspberry Pi Rebuild Release Record
 
-> This is the live electronic evidence record for one rebuild. Follow `docs/RELEASE_DAY.md` for the actual operating procedure. Do not commit populated release records containing site-specific operational information unless that is explicitly approved.
+> This is the live electronic evidence record for one rebuild. Start with `START-HERE.md` and follow the numbered steps in order. Use `docs/RELEASE_DAY.md` when more detail is needed. Do not commit populated release records containing site-specific operational information unless that is explicitly approved.
+
+## How to use this record
+
+For every numbered step in `START-HERE.md`:
+
+1. run the documented command;
+2. check that the documented expected result is present;
+3. record the result and evidence here;
+4. only then continue to the next step.
+
+If a step returns `FAIL` or `NO-GO`, **stop** unless you are following the documented rollback procedure.
+
+Do not mark a step `PASS` simply because a command finished. The expected result must actually have been seen.
 
 ## Change details
 
@@ -57,25 +70,37 @@ If the overall profile gate is not `PASS`, this release is **NO-GO** and no dest
 | Rescue build identity | _fill in before change_ |
 | Rescue round-trip evidence | _fill in before change_ |
 
-## Release gate record
+## Step-by-step release record
 
-Update this table during the change. Use `GO`, `NO-GO`, `PASS`, `FAIL`, `ROLLED BACK`, or `N/A` as appropriate.
+Update this table while following `START-HERE.md`.
 
-| Gate | Result | Time | Notes / evidence |
-| --- | --- | --- | --- |
-| -1 PowerShell/Git environment pinned | {{GATE_MINUS1_INITIAL}} | {{CREATED_TIME}} | Commit `{{GIT_COMMIT}}` |
-| 0 Correct Pi/profile confirmed | {{PROFILE_OVERALL_RESULT}} | {{CREATED_TIME}} | {{PROFILE_SUMMARY}} |
-| 1 Pre-change prerequisites | _pending_ |  |  |
-| 2 Start-of-change validation | _pending_ |  |  |
-| 3 Final node/profile preflight | _pending_ |  |  |
-| 4 Inventory + FreeSWITCH export | _pending_ |  |  |
-| 5 Full 32 GB rollback image | _pending_ |  |  |
-| 6 RAM rescue readiness + load | _pending_ |  |  |
-| 7 Enter and validate RAM rescue | _pending_ |  |  |
-| 8 Destructive Debian write | _pending_ |  |  |
-| 9 First Debian boot + validation | _pending_ |  |  |
-| 10 FreeSWITCH restore + smoke test | _pending_ |  |  |
-| 11 End-of-day decision | _pending_ |  |  |
+Use these values where practical:
+
+```text
+PASS
+FAIL
+NO-GO
+ROLLED BACK
+NOT RUN
+N/A
+```
+
+| Step | What this step proves | Result | Time | Evidence / notes |
+| --- | --- | --- | --- | --- |
+| 1 - Git environment | Checkout is current, clean and pinned to an exact commit | {{GATE_MINUS1_INITIAL}} | {{CREATED_TIME}} | Commit `{{GIT_COMMIT}}` |
+| 2 - Migration profile | Correct Pi/OS profile selected | {{PROFILE_OVERALL_RESULT}} | {{CREATED_TIME}} | {{PROFILE_SUMMARY}} |
+| 3 - Electronic record | Release record created and automatic profile discovery agrees | {{PROFILE_OVERALL_RESULT}} | {{CREATED_TIME}} | Record `{{RECORD_FILE}}` |
+| 4 - Site configuration | Protected profile-specific site configuration prepared | _pending_ |  |  |
+| 5 - Laptop/VPN/SSH | Laptop, VPN, active Pi and passive Pi are reachable and healthy | _pending_ |  |  |
+| 6 - Passive-node preflight | Pi model, CentOS version, architecture, network and whole SD device confirmed | _pending_ |  |  |
+| 7 - Inventory + FreeSWITCH export | Required configuration/evidence copied safely off-node | _pending_ |  |  |
+| 8 - Full rollback image | Complete SD-card rollback image exists off-node and is checksummed | _pending_ |  |  |
+| 9 - Rescue readiness | Correct profile-specific rescue is ready and loaded | _pending_ |  |  |
+| 10 - RAM rescue validation | Rescue runs from RAM, network works, correct SD is visible and unmounted | _pending_ |  |  |
+| 11 - Debian write | Approved Debian image written to the confirmed passive-node SD card | _pending_ |  |  |
+| 12 - Debian validation | Debian boots and OS/network/storage/SSH validation passes | _pending_ |  |  |
+| 13 - FreeSWITCH validation | Config restore, smoke tests and functional checks pass | _pending_ |  |  |
+| 14 - Finish / soak | First-node release completed and passive soak started | _pending_ |  |  |
 
 ## Rollback and migration artifacts
 
@@ -89,7 +114,7 @@ Update this table during the change. Use `GO`, `NO-GO`, `PASS`, `FAIL`, `ROLLED 
 
 ## Destructive checkpoint
 
-Complete immediately before Gate 8.
+Complete immediately before **Step 11 - Debian write**.
 
 ```text
 [ ] Profile still matches target hardware/source OS
@@ -108,6 +133,8 @@ Decision time:
 Engineer initials/name:
 Notes:
 ```
+
+If any line above cannot be confirmed, the result is **NO-GO**. Do not write Debian.
 
 ## Functional validation
 
@@ -150,6 +177,8 @@ ACTIVE NODE: original CentOS node still carrying production
 PASSIVE NODE: Debian rebuilt and validated
 NEXT STEP: 24-48 hour passive soak
 ```
+
+Do not rebuild the active node as part of the same first-node release simply because time remains in the maintenance window.
 
 ## Notes
 
