@@ -6,12 +6,47 @@ This project supports a second migration profile in addition to the original Ras
 
 | Profile | Current platform | Target platform |
 | --- | --- | --- |
-| Pi 3 legacy | Raspberry Pi 3, CentOS 7 | Debian 13 arm64 |
-| Pi 4 current | Raspberry Pi 4, CentOS 9 | Debian 13 arm64 |
+| `PI3-CENTOS7` | Raspberry Pi 3, CentOS 7 | Debian 13 arm64 |
+| `PI4-CENTOS9` | Raspberry Pi 4, CentOS 9 | Debian 13 arm64 |
 
 The overall migration method is the same for both profiles: protect the active node, rebuild the passive node first, prove the RAM-rescue path non-destructively, retain a full 32 GB rollback image, write the exact tested Debian image, restore FreeSWITCH configuration, test, soak and only then fail production service over.
 
 The Raspberry Pi 4 / CentOS 9 profile must nevertheless be treated as a separate engineering target. A rescue kernel/initramfs/DTB combination proven on a Pi 3 / CentOS 7 node is **not** automatically approved for a Pi 4 / CentOS 9 node.
+
+## What "migration profile" means
+
+The migration profile is simply the set of expectations and safety checks for a particular source platform. It is **not an arbitrary choice made on release day**.
+
+The physical Pi model and the CentOS version already installed determine the correct profile:
+
+```text
+Raspberry Pi 3 + CentOS 7  -> PI3-CENTOS7
+Raspberry Pi 4 + CentOS 9  -> PI4-CENTOS9
+```
+
+For the Pi 4 estate covered by this document, the correct profile is therefore always:
+
+```text
+PI4-CENTOS9
+```
+
+The profile exists to prevent us accidentally applying Pi 3/CentOS 7 assumptions to a Pi 4/CentOS 9 machine. Before any destructive action, the scripts and the operator must independently confirm that the detected hardware and source OS agree with the selected profile.
+
+A healthy profile check should mean:
+
+```text
+Selected profile  : PI4-CENTOS9
+Detected hardware : Raspberry Pi 4
+Detected OS       : CentOS 9
+Architecture      : aarch64
+
+Hardware match    : PASS
+OS match          : PASS
+Architecture      : PASS
+Migration profile : PASS
+```
+
+If the detected model or OS differs, the migration is a **NO-GO** and nothing should be changed.
 
 ## Pi 4 profile configuration
 
@@ -69,6 +104,8 @@ CentOS 9
 
 Only after that exact round trip passes may the Pi 4 profile proceed to a destructive Debian write.
 
+A Pi 3 / CentOS 7 rescue test does not satisfy this requirement. The Pi 4 rescue kernel, initramfs, DTB, network drivers and boot assumptions must be proven separately.
+
 ## Debian image validation
 
 The same Debian 13 arm64 golden-image engineering approach can be used for Pi 3 and Pi 4, but production approval is hardware-specific. If the image is to be used on Pi 4, boot the exact checksum-approved image on representative Pi 4 hardware and validate:
@@ -117,14 +154,34 @@ Use the same working estimate unless testing proves otherwise:
 - subsequent proven migration: approximately **1.5-2.5 hours**, with a **2-3 hour** working allowance sensible;
 - soak periods are additional and are not part of the hands-on migration time.
 
-## Release-day selection
+## Release-day confirmation
 
-At the top of `RELEASE_DAY.md`, record the selected source profile and verify it matches the node:
+The release-day document now describes this in plain language as **"Confirm which Pi type we are rebuilding"**.
+
+For a Pi 4 running CentOS 9, record:
 
 ```text
-Migration profile: PI3-CENTOS7 / PI4-CENTOS9
-Current OS: CentOS 7 / CentOS 9
-Raspberry Pi model: Raspberry Pi 3 / Raspberry Pi 4
+Migration profile: PI4-CENTOS9
+Current OS: CentOS 9
+Raspberry Pi model: Raspberry Pi 4
+```
+
+The pre-flight must then independently detect the same hardware and source OS. The operator is not expected to guess the profile; the node identity determines it.
+
+Examples of mandatory stop conditions are:
+
+```text
+Selected profile : PI4-CENTOS9
+Detected hardware: Raspberry Pi 3
+Result           : STOP - WRONG HARDWARE PROFILE
+```
+
+or:
+
+```text
+Selected profile : PI4-CENTOS9
+Detected OS      : CentOS 7
+Result           : STOP - WRONG SOURCE OS PROFILE
 ```
 
 A profile mismatch is a NO-GO. Do not weaken `EXPECTED_MODEL_REGEX` or the expected source OS values simply to force a migration to proceed.
