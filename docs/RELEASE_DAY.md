@@ -142,27 +142,108 @@ After the release commit is recorded, **do not run `git pull` again during the c
 
 ---
 
-# RELEASE GATE 0 - Select and verify migration profile
+# RELEASE GATE 0 - Confirm which Pi type we are rebuilding
 
-For Pi 3 / CentOS 7 use the Pi 3 profile configuration. For Pi 4 / CentOS 9 use:
+## What this gate means
+
+This is a **safety identity check**, not a technical choice that the engineer makes arbitrarily on the day.
+
+The hardware and the existing CentOS version determine which migration profile must be used:
+
+| If the node is... | Use this profile |
+| --- | --- |
+| Raspberry Pi 3 running CentOS 7 | `PI3-CENTOS7` |
+| Raspberry Pi 4 running CentOS 9 | `PI4-CENTOS9` |
+
+For the current Raspberry Pi 4 estate running CentOS 9, the expected selection is therefore:
+
+```text
+PI4-CENTOS9
+```
+
+The purpose of the profile is to stop us accidentally using a Pi 3/CentOS 7 rescue procedure, kernel, initramfs, DTB or other assumptions against a Pi 4/CentOS 9 machine.
+
+For Pi 4 / CentOS 9 start from:
 
 ```text
 config/site-pi4-centos9.env.example
 ```
 
-The populated production config must remain outside Git or otherwise protected.
+Copy it to protected storage outside the repository and populate the actual node values. Production secrets must not be committed to Git.
+
+## What the pre-flight must prove
+
+The release operator should expect the pre-flight to establish something equivalent to:
+
+```text
+Selected profile  : PI4-CENTOS9
+Detected hardware : Raspberry Pi 4
+Detected OS       : CentOS 9
+Architecture      : aarch64
+Target disk       : confirmed whole 32 GB SD-card device
+
+Hardware match    : PASS
+OS match          : PASS
+Architecture      : PASS
+Rescue profile    : PASS
+Debian image      : PASS
+
+MIGRATION_PROFILE=PASS
+```
+
+The exact text may differ, but the meaning must be the same: the machine we connected to must match the profile we intend to use.
 
 Confirm:
 
 ```text
-[ ] Migration profile selected
-[ ] Raspberry Pi model matches profile
-[ ] Current CentOS version matches profile
-[ ] Correct profile-specific rescue build has already passed round-trip testing
-[ ] Exact Debian image has been boot-tested on this Pi hardware family
+[ ] Migration profile is PI4-CENTOS9 for a Pi 4 running CentOS 9
+[ ] Raspberry Pi model detected by pre-flight matches the selected profile
+[ ] Current CentOS version detected by pre-flight matches the selected profile
+[ ] Architecture matches the approved target design
+[ ] Correct profile-specific RAM-rescue build has already passed a non-destructive round-trip test
+[ ] Exact Debian image has been boot-tested on the same Raspberry Pi hardware family
 ```
 
-For `PI4-CENTOS9`, required source identity is Raspberry Pi 4 + CentOS 9. A Pi 3 rescue validation does not count.
+## What counts as a mismatch
+
+Examples that must stop the release:
+
+```text
+Selected profile : PI4-CENTOS9
+Detected hardware: Raspberry Pi 3
+Result           : STOP - WRONG HARDWARE PROFILE
+```
+
+or:
+
+```text
+Selected profile : PI4-CENTOS9
+Detected OS      : CentOS 7
+Result           : STOP - WRONG SOURCE OS PROFILE
+```
+
+Nothing should be changed when a profile check fails.
+
+## Why the rescue test is profile-specific
+
+For `PI4-CENTOS9`, the approved rescue proof must have demonstrated this exact sequence on Pi 4 / CentOS 9:
+
+```text
+Pi 4 / CentOS 9
+      -> load Pi 4 RAM rescue
+      -> enter rescue
+      -> reconnect over router-hosted VPN
+      -> prove RAM-root, network and SD-card visibility
+      -> make NO disk changes
+      -> reboot
+      -> CentOS 9 returns normally
+```
+
+A successful rescue test on Pi 3 / CentOS 7 does **not** count as evidence for a Pi 4 / CentOS 9 migration.
+
+**GO:** profile, detected Pi model, detected CentOS version, approved rescue build and tested Debian image all agree.
+
+**NO-GO:** any mismatch or uncertainty. Stop without changing the node.
 
 ---
 
