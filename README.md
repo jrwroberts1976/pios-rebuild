@@ -8,23 +8,27 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 - There are two Raspberry Pi nodes. The passive node is rebuilt and proven first while the active CentOS node continues carrying service.
 - Debian is not written until a RAM-rescue environment has been tested and a normal reboot back to CentOS has been proven.
 - A full SD-card image and configuration backup are taken before destructive work.
+- The existing FreeSWITCH configuration and runtime/module state are exported separately and copied off-node before rebuild.
 - The Debian image is built and tested in advance with the required operational tooling and FreeSWITCH prerequisites.
+- The exported FreeSWITCH configuration is restored onto Debian only after the required Debian FreeSWITCH packages/modules are present.
 - FreeSWITCH on Debian 13 is a formal test gate before production failover.
 - All destructive scripts fail closed and require explicit confirmation.
 
 ## Target sequence
 
 1. Baseline both CentOS nodes and document the active/passive roles.
-2. Build a reproducible Debian 13 arm64 Raspberry Pi image with required tools.
-3. Validate the image and FreeSWITCH in a non-production/lab test where possible.
-4. Build and test the RAM-rescue mechanism on the passive node.
-5. Rebuild the passive node to Debian 13.
-6. Validate Debian, FreeSWITCH, SIP, media, management and monitoring on the passive node.
-7. Soak-test the passive node while the active CentOS node remains in service.
-8. Perform a controlled service failover to the Debian node.
-9. Validate production traffic and maintain a rollback window.
-10. Once stable, rebuild the former active node using the same tested process.
-11. Restore active/passive resilience and complete final acceptance testing.
+2. Export FreeSWITCH configuration/runtime state from both nodes and copy it to secure off-node storage.
+3. Build a reproducible Debian 13 arm64 Raspberry Pi image with required tools and the chosen FreeSWITCH 1.11.x package set where practical.
+4. Validate the exact image and FreeSWITCH in a non-production/lab test where possible.
+5. Build and test the RAM-rescue mechanism on the passive node.
+6. Rebuild the passive node to Debian 13.
+7. Restore the passive node's exported FreeSWITCH configuration onto Debian and reconcile any module/package differences.
+8. Validate Debian, FreeSWITCH, SIP, media, management and monitoring on the passive node.
+9. Soak-test the passive node while the active CentOS node remains in service.
+10. Perform a controlled service failover to the Debian node.
+11. Validate production traffic and maintain a rollback window.
+12. Once stable, rebuild the former active node using the same tested process and its own saved configuration.
+13. Restore active/passive resilience and complete final acceptance testing.
 
 ## Repository layout
 
@@ -41,15 +45,24 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 │   └── FREESWITCH_TEST_PLAN.md
 └── scripts/
     ├── lib/common.sh
+    ├── 00-build-debian-image.sh
     ├── 01-preflight.sh
     ├── 02-backup-inventory.sh
+    ├── 02a-export-freeswitch-config.sh
     ├── 03-rescue-readiness.sh
     ├── 04-load-rescue.sh
     ├── 05-enter-rescue.sh
     ├── 06-write-debian.sh
     ├── 07-validate-debian.sh
+    ├── 07a-restore-freeswitch-config.sh
     └── 08-freeswitch-smoke-test.sh
 ```
+
+## FreeSWITCH configuration migration
+
+`02a-export-freeswitch-config.sh` captures the active configuration root, version, loaded-module information, Sofia/gateway state, package inventory and supplementary FreeSWITCH paths. The export can contain SIP credentials and other secrets, so it must be copied to secure storage and must never be committed to this repository.
+
+After Debian and the required FreeSWITCH package/module set are installed, `07a-restore-freeswitch-config.sh` verifies the exported archive, backs up the fresh Debian configuration, stops FreeSWITCH and applies the exported configuration. It deliberately does **not** claim that the restored configuration is production-ready: `08-freeswitch-smoke-test.sh` and `docs/FREESWITCH_TEST_PLAN.md` are the acceptance gates.
 
 ## Important safety rule
 
