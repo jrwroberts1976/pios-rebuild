@@ -24,13 +24,33 @@ printf 'kernel=%s\n' "$(uname -r)"
 printf 'root=%s\n' "$(root_source)"
 printf 'target=%s\n' "$TARGET_DISK"
 
+printf '\n===== SOURCE OS =====\n'
+OS_ID=''
+OS_VERSION=''
+if [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  OS_ID="${ID:-}"
+  OS_VERSION="${VERSION_ID:-}"
+  printf 'os_id=%s\nos_version=%s\n' "$OS_ID" "$OS_VERSION"
+fi
+
+printf '\n===== KEXEC TOOL =====\n'
 if command -v kexec >/dev/null 2>&1; then
   echo 'kexec_tool=PASS'
+  command -v kexec
+  kexec --version 2>&1 || true
 else
   echo 'kexec_tool=FAIL'
+  case "$OS_VERSION" in
+    7*) echo 'install_hint=sudo yum install -y kexec-tools' ;;
+    9*) echo 'install_hint=sudo dnf install -y kexec-tools' ;;
+    *)  echo 'install_hint=install the CentOS/RHEL kexec-tools package using the approved package manager' ;;
+  esac
   READY=0
 fi
 
+printf '\n===== KEXEC KERNEL SUPPORT =====\n'
 KEXEC_CFG=''
 if [[ -r "/boot/config-$(uname -r)" ]]; then
   KEXEC_CFG="$(grep -E '^CONFIG_KEXEC(=y|_FILE=y)' "/boot/config-$(uname -r)" || true)"
@@ -44,6 +64,7 @@ if [[ -n "$KEXEC_CFG" ]]; then
   printf '%s\n' "$KEXEC_CFG"
 else
   echo 'kexec_kernel=FAIL'
+  echo 'kernel_hint=Installing kexec-tools cannot add missing CONFIG_KEXEC support; stop and review the running kernel.'
   READY=0
 fi
 
