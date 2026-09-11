@@ -1,0 +1,27 @@
+# Local site configuration / secrets
+config/site.env
+*.env.local
+
+# Migration artifacts and backups
+artifacts/
+backup/
+backups/
+*.img
+*.img.xz
+*.img.gz
+*.img.zst
+*.tgz
+*.tar.gz
+*.sha256
+*.sha512
+*.manifest.txt
+
+# FreeSWITCH exports may contain credentials
+freeswitch-export-*/
+
+# Temporary/editor files
+*.swp
+*.tmp
+.DS_Store
+.vscode/
+.idea/
