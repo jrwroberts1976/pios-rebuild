@@ -32,6 +32,12 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 13. Once stable, rebuild the former active node using the same tested process and its own saved configuration.
 14. Restore active/passive resilience and complete final acceptance testing.
 
+## Estimated migration duration
+
+For a Raspberry Pi using a 32 GB SD card, allow approximately **2-3 hours per Pi once the process has been proven**. The first passive-node migration should be given a larger **3-4 hour window** because the RAM-rescue method, Debian image, FreeSWITCH restoration and validation steps are being proven for the first time. Once that migration has passed its acceptance tests, the second Pi should normally take approximately **1.5-2.5 hours** if no unexpected issues are found.
+
+The largest timing variables are the speed of the full 32 GB rollback-image transfer, SD-card write speed, FreeSWITCH package/configuration reconciliation and the amount of functional testing required. These figures are hands-on migration estimates and do not include the planned soak periods before and after production failover.
+
 ## Repository layout
 
 ```text
