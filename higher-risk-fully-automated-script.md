@@ -19,17 +19,7 @@ A Pi 4 / CentOS 9 run must use the separately proven Pi 4 rescue kernel/initramf
 
 ## Why this is higher risk
 
-A fully automated orchestrator can reduce typing and make repeat runs consistent, but it also compresses several deliberate decision points. The main risks are:
-
-- selecting the wrong node or wrong SD-card device;
-- automatically proceeding after a warning that a human would have investigated;
-- entering RAM rescue before the backup/export is genuinely usable;
-- overwriting CentOS after a network/VPN degradation;
-- applying the wrong hardware/OS rescue profile;
-- restoring incompatible FreeSWITCH configuration/modules;
-- interpreting a process-level success as service acceptance;
-- automatically failing production service over before call-path validation;
-- losing the ability to inspect unexpected output between stages.
+A fully automated orchestrator can reduce typing and make repeat runs consistent, but it also compresses several deliberate decision points. The main risks are selecting the wrong node or SD-card device, automatically proceeding after a warning, entering rescue before backup/export verification, overwriting CentOS after VPN degradation, applying the wrong hardware/OS rescue profile, restoring incompatible FreeSWITCH configuration/modules, interpreting process-level success as service acceptance and automatically failing production service over before call-path validation.
 
 For that reason, **full automation must never mean removal of validation**. It means automating the checks and enforcing the decision gates in code.
 
@@ -51,7 +41,7 @@ pwsh .\scripts\powershell\Invoke-FullyAutomatedRebuild.ps1 `
   -ConfirmDestructiveRebuild 'ERASE_PASSIVE_NODE'
 ```
 
-The destructive confirmation should be deliberately difficult to supply accidentally and should include the expected node identity in the final implementation.
+The final implementation should make destructive confirmation deliberately difficult to supply accidentally and should bind it to the expected node identity.
 
 ## Mandatory preconditions
 
@@ -144,7 +134,7 @@ RESCUE BUILD ID
 RELEASE COMMIT
 ```
 
-The run may only continue if every value matches the signed/recorded run manifest and the explicit destructive confirmation was supplied.
+The run may only continue if every value matches the recorded run manifest and the explicit destructive confirmation was supplied.
 
 ### Stage G - Enter and validate RAM rescue
 
@@ -162,27 +152,13 @@ If rescue validation fails, do **not** attempt the Debian write.
 
 ### Stage H - Debian image write
 
-Use the existing Linux rescue-side `06-write-debian.sh` rather than implementing a second independent destructive writer in PowerShell. The Linux script remains responsible for:
-
-- RAM-root validation;
-- whole-disk validation;
-- target-unmounted validation;
-- expected-device matching;
-- approved image checksum validation where applicable;
-- literal destructive confirmation.
+Use the existing Linux rescue-side `06-write-debian.sh` rather than implementing a second independent destructive writer in PowerShell. The Linux script remains responsible for RAM-root validation, whole-disk validation, target-unmounted validation, expected-device matching, approved image checksum validation where applicable and literal destructive confirmation.
 
 The PowerShell controller should orchestrate and log the operation, not weaken those checks.
 
 ### Stage I - Offline Debian configuration
 
-Before reboot, automatically verify/apply only the values that have been proven in testing:
-
-- hostname;
-- SSH public key;
-- expected network configuration;
-- required first-boot settings.
-
-Then inspect the Debian root/boot filesystems and only reboot if offline validation passes.
+Before reboot, automatically verify/apply only the values proven in testing: hostname, SSH public key, expected network configuration and required first-boot settings. Inspect the Debian root/boot filesystems and only reboot if offline validation passes.
 
 ### Stage J - First boot validation
 
@@ -198,7 +174,7 @@ A failed Debian validation must leave production on the peer node and stop the a
 
 1. Copy the verified export and checksum to Debian.
 2. Verify the required package/module set is present.
-3. Run `07a-restore-freeswitch-config.sh` with the explicit restore confirmation.
+3. Run `07a-restore-freeswitch-config.sh` with explicit restore confirmation.
 4. Run `08-freeswitch-smoke-test.sh --start`.
 5. Capture service status, Sofia/gateway state, registrations and logs.
 
@@ -206,13 +182,13 @@ The automated controller may perform deterministic smoke tests, but it must **no
 
 ## What should remain manual
 
-Even in the higher-risk automated mode, I would keep these as separate human release decisions:
+Even in the higher-risk automated mode, keep these as separate human release decisions:
 
 1. **Production failover.** Do not automatically move live service to the rebuilt node at the end of the OS rebuild.
-2. **Critical call-path acceptance.** Inbound/outbound calls, two-way audio, DTMF, caller ID and any site-specific call flows require an explicit acceptance result unless we later build trustworthy synthetic call testing.
+2. **Critical call-path acceptance.** Inbound/outbound calls, two-way audio, DTMF, caller ID and site-specific call flows require explicit acceptance unless trustworthy synthetic call testing is later built.
 3. **Second-node rebuild approval.** Do not automatically rebuild the second Pi immediately after the first succeeds. Complete the agreed passive/production soak first.
 
-This means the automated script can safely aim for:
+The automated boundary should therefore be:
 
 ```text
 CentOS PASSIVE
@@ -224,17 +200,11 @@ CentOS PASSIVE
    -> READY FOR SOAK
 ```
 
-rather than attempting:
-
-```text
-rebuild both nodes + automatic failover + automatic retirement of rollback
-```
-
-in a single unattended command.
+not an unattended rebuild of both nodes plus automatic failover and retirement of rollback.
 
 ## State file / resumability
 
-A future implementation should keep a signed or checksum-protected run manifest, for example:
+A future implementation should keep a checksum-protected run manifest, for example:
 
 ```text
 artifacts/<change-reference>/run-state.json
@@ -260,43 +230,25 @@ ROLLED_BACK
 FAILED
 ```
 
-The controller must never infer a later state merely because an earlier command returned exit code 0. It should verify the observable result before writing the next state.
+The controller must verify the observable result before advancing state.
 
 ## Timeouts and retry behaviour
 
-Retries must be bounded. Suggested policy:
-
-- ordinary SSH/reachability checks: several short retries;
-- reboot/rescue transition: bounded multi-minute wait;
-- Debian first boot: bounded multi-minute wait;
-- no infinite retry around image writes or destructive operations;
-- never automatically repeat a failed destructive write without re-validating target identity and run state.
+Retries must be bounded. Use several short retries for ordinary SSH/reachability checks and bounded multi-minute waits for rescue or Debian boot transitions. Never use an infinite retry around image writes and never automatically repeat a failed destructive write without re-validating target identity and run state.
 
 ## Logging
 
-The controller should produce one timestamped release log containing:
-
-- Git commit;
-- profile;
-- node identities;
-- command/stage start and finish times;
-- stdout/stderr from remote stages;
-- checksums and artifact paths;
-- every GO/NO-GO result;
-- the exact destructive checkpoint;
-- final state.
-
-Secrets from FreeSWITCH exports, SSH keys and repository credentials must not be written into ordinary logs.
+Produce one timestamped release log containing Git commit, profile, node identities, stage start/finish times, stdout/stderr from remote stages, checksums/artifact paths, every GO/NO-GO result, the destructive checkpoint and final state. Do not write secrets from FreeSWITCH exports, SSH keys or repository credentials into ordinary logs.
 
 ## Rollback behaviour
 
-Automation may assist rollback, but it should not silently choose rollback after a destructive failure. The controller should stop in a known state and present the applicable action:
+Automation may assist rollback, but it should not silently choose rollback after a destructive failure. Stop in a known state and present the applicable action:
 
 | State | Expected response |
 | --- | --- |
 | Before rescue | Stop; CentOS unchanged |
 | Rescue running, SD untouched | Reboot to CentOS |
-| Debian write started/finished, rescue healthy | Offer controlled restore of the verified CentOS image |
+| Debian write started/finished, rescue healthy | Offer controlled restore of verified CentOS image |
 | Debian booted but validation failed | Keep peer carrying service; repair/rebuild passive |
 | FreeSWITCH validation failed | Keep peer carrying service; restore clean Debian config or rebuild |
 
@@ -304,18 +256,18 @@ A later `-Rollback` mode could automate a previously rehearsed image restore, bu
 
 ## Development gates before production use
 
-Do not use a future fully automated orchestrator against a production Pi until it has passed all of the following:
+Do not use a future fully automated orchestrator against a production Pi until it has passed:
 
 1. PowerShell unit/static checks.
 2. Dry-run mode proving no mutation occurs.
 3. Lab Pi 3 / CentOS 7 full migration test if that profile remains required.
 4. Lab Pi 4 / CentOS 9 full migration test.
-5. Deliberate wrong-model test: must refuse.
-6. Deliberate wrong-OS-version test: must refuse.
-7. Deliberate wrong-target-device test: must refuse.
-8. Corrupt/missing rollback image test: must refuse destructive stage.
-9. Wrong Debian checksum test: must refuse.
-10. Network loss at each major transition.
+5. Deliberate wrong-model refusal test.
+6. Deliberate wrong-OS-version refusal test.
+7. Deliberate wrong-target-device refusal test.
+8. Corrupt/missing rollback image refusal test.
+9. Wrong Debian checksum refusal test.
+10. Network-loss tests at major transitions.
 11. Rescue-not-reachable test.
 12. Debian-first-boot-failure test.
 13. FreeSWITCH-restore-failure test.
@@ -324,8 +276,8 @@ Do not use a future fully automated orchestrator against a production Pi until i
 
 ## Recommendation
 
-Build this only after the standard Pi 4 / CentOS 9 and Pi 3 / CentOS 7 manual-assisted workflows have both been proven. The most useful target is **high automation with hard gates**, not genuinely unattended rebuilding of both production nodes.
+Build this only after the standard Pi 4 / CentOS 9 and Pi 3 / CentOS 7 assisted workflows have been proven. The useful target is **high automation with hard gates**, not genuinely unattended rebuilding of both production nodes.
 
-The safer production boundary is therefore:
+The safer production boundary is:
 
 > one command may rebuild and validate the **passive** node, but production failover and approval to rebuild the peer remain separate release decisions.
