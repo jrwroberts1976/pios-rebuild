@@ -72,6 +72,87 @@ The scheduled soak period is **not** part of this hands-on migration window.
 
 ---
 
+# RELEASE GATE -1 - Set up the PowerShell/Git environment
+
+Do this **before the maintenance window starts**. The purpose is to make sure the administration laptop is running the latest reviewed release code and then pin the exact commit for the whole change.
+
+Open PowerShell 7.
+
+If the repository has not been cloned onto this laptop yet:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+
+git clone https://github.com/jrwroberts1976/pios-rebuild.git $RepoPath
+Set-Location $RepoPath
+```
+
+If the repository already exists:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+Set-Location $RepoPath
+```
+
+The working tree must be clean before it is updated:
+
+```powershell
+git status --short
+```
+
+Expected result: **no output**. If files are listed, stop and review the local changes before pulling.
+
+Update from GitHub using a fast-forward-only pull:
+
+```powershell
+git fetch origin --prune
+git checkout main
+git pull --ff-only origin main
+```
+
+Record the exact release version:
+
+```powershell
+git status
+git log -1 --oneline
+$ReleaseCommit = (git rev-parse HEAD).Trim()
+Write-Host "Release commit: $ReleaseCommit"
+```
+
+Copy the full commit SHA into **Git commit used** in the change record above.
+
+Once the repository has already been cloned, the same checks can be run using the supplied helper:
+
+```powershell
+pwsh .\scripts\powershell\00-setup-environment.ps1 `
+  -RepoPath $RepoPath `
+  -Branch main
+```
+
+Required result:
+
+```text
+ENVIRONMENT_SETUP=PASS
+```
+
+`git pull --ff-only` is deliberate. If the local checkout has diverged, the release preparation must stop rather than creating an unreviewed merge on the administration laptop.
+
+**IMPORTANT:** after the release commit has been recorded, do **not** run `git pull` again during the change. Every command in the release must come from that exact pinned revision.
+
+```text
+[ ] Repository cloned or existing checkout located
+[ ] Working tree clean
+[ ] git fetch origin --prune completed
+[ ] main checked out
+[ ] git pull --ff-only origin main completed
+[ ] Exact full commit SHA recorded in change record
+[ ] No further Git updates will be made during this change
+```
+
+**NO-GO:** if the repository cannot be updated cleanly or its exact commit cannot be identified, stop before the maintenance activity.
+
+---
+
 # RELEASE GATE 0 - Before the change window
 
 All items below must already be true.
@@ -524,7 +605,7 @@ After the rebuilt Debian passive node has completed its **24-48 hour passive soa
 At that later release:
 
 1. confirm both nodes healthy;
-2. take/refesh any configuration export that may have changed;
+2. take/refresh any configuration export that may have changed;
 3. move service from CentOS active to Debian;
 4. test inbound/outbound calls, RTP, DTMF, caller ID and gateways immediately;
 5. if acceptance fails, return service to CentOS;
