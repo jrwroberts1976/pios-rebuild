@@ -2,9 +2,16 @@
 
 ## Purpose
 
-This project can be controlled from a Windows administration laptop using PowerShell. The PowerShell scripts are the **operator-side controllers**. The Raspberry Pi itself still runs Linux, so low-level platform actions such as `kexec`, `lsblk`, `dd`, FreeSWITCH service operations and the RAM-rescue write gate remain Linux/bash scripts executed remotely.
+This project can be controlled from a Windows administration laptop using PowerShell. The PowerShell scripts are the **operator-side controllers**. The Raspberry Pi still runs Linux, so low-level actions such as `kexec`, `lsblk`, `dd`, FreeSWITCH service operations and the RAM-rescue write gate remain Linux/bash scripts executed remotely.
 
-This separation is deliberate: PowerShell handles the VPN-side workstation workflow, file transfer, checksums, evidence and remote execution, while the destructive Linux checks remain on the machine that can actually inspect the target block device.
+Supported migration profiles are:
+
+| Profile | Source | Target |
+| --- | --- | --- |
+| `PI3-CENTOS7` | Raspberry Pi 3 / CentOS 7 | Debian 13 arm64 |
+| `PI4-CENTOS9` | Raspberry Pi 4 / CentOS 9 | Debian 13 arm64 |
+
+For Pi 4 / CentOS 9, read `PI4_CENTOS9.md` before release execution. The rescue environment must be separately proven for Pi 4 / CentOS 9 and must not be assumed compatible because the Pi 3 process works.
 
 ## Requirements
 
@@ -19,7 +26,7 @@ Recommended workstation:
 - SSH key access to both Raspberry Pis;
 - laptop connected to mains power with sleep/hibernate disabled for the maintenance window.
 
-The full SD-card backup helper intentionally uses `cmd.exe` output redirection so the SSH stream is written as raw bytes rather than being interpreted as PowerShell text.
+The full SD-card backup helper intentionally uses binary-safe command redirection so the SSH stream is written as raw bytes rather than interpreted as PowerShell text.
 
 ## Files
 
@@ -43,46 +50,28 @@ If the repository is not already on the laptop:
 
 ```powershell
 $RepoPath = Join-Path $HOME 'pios-rebuild'
-
 git clone https://github.com/jrwroberts1976/pios-rebuild.git $RepoPath
 Set-Location $RepoPath
 ```
 
-If it already exists, move into it:
+If it already exists:
 
 ```powershell
 $RepoPath = Join-Path $HOME 'pios-rebuild'
 Set-Location $RepoPath
-```
-
-Check that there are no uncommitted local changes before updating:
-
-```powershell
 git status --short
-```
-
-The expected result for the release checkout is **no output**. If files are listed, review them and either commit, stash or deliberately discard them before continuing.
-
-Refresh the local checkout from GitHub:
-
-```powershell
 git fetch origin --prune
 git checkout main
 git pull --ff-only origin main
-```
-
-Then record exactly what will be used for the release:
-
-```powershell
 git status
 git log -1 --oneline
 $ReleaseCommit = (git rev-parse HEAD).Trim()
 Write-Host "Release commit: $ReleaseCommit"
 ```
 
-`git pull --ff-only` is intentional. If the local branch has diverged, the setup should stop rather than silently create a merge commit on the administration laptop.
+The working tree must be clean before the pull. `git pull --ff-only` is intentional: if the local branch has diverged, stop rather than creating an unreviewed merge.
 
-Once the repository has already been cloned, the project includes a helper that performs the same clean-tree, fetch, checkout, fast-forward pull and commit-recording gates:
+The same preparation can be performed with:
 
 ```powershell
 pwsh .\scripts\powershell\00-setup-environment.ps1 `
@@ -96,9 +85,41 @@ Required result:
 ENVIRONMENT_SETUP=PASS
 ```
 
-Record the full commit SHA in the release/change record. From this point until the change is completed or abandoned, **do not update the repository again**. This ensures that every command executed during the release comes from the exact reviewed version.
+Record the full commit SHA in the release record. From this point, do not update the repository again during the change.
 
-## 1. Run the Windows laptop preflight
+## 1. Select the migration profile
+
+For Raspberry Pi 3 / CentOS 7, start from:
+
+```text
+config/site.env.example
+```
+
+For Raspberry Pi 4 / CentOS 9, start from:
+
+```text
+config/site-pi4-centos9.env.example
+```
+
+Copy the matching file to protected local storage and populate the actual node-specific values. Do not commit the populated configuration.
+
+Example:
+
+```powershell
+$Config = 'C:\pios-rebuild-secure\passive-site.env'
+```
+
+The Pi 4 profile contains fail-closed values similar to:
+
+```text
+EXPECTED_MODEL_REGEX='^Raspberry Pi 4'
+EXPECTED_SOURCE_OS_ID='centos'
+EXPECTED_SOURCE_OS_VERSION='9'
+```
+
+A profile mismatch is a NO-GO. Do not loosen those values just to make the preflight pass.
+
+## 2. Run the Windows laptop preflight
 
 From the repository root:
 
@@ -116,18 +137,6 @@ Required result:
 ADMIN_LAPTOP_PREFLIGHT=PASS
 ```
 
-## 2. Prepare the site configuration
-
-Copy the relevant site configuration example and populate it with the actual node values. Keep production secrets out of Git.
-
-Example local path:
-
-```powershell
-$Config = 'C:\pios-rebuild-secure\passive-site.env'
-```
-
-The PowerShell remote runner copies the config to a temporary protected path on the target Pi, invokes the selected Linux stage with `PIOS_CONFIG` pointing at it, and removes the staged config after ordinary stages.
-
 ## 3. Run the remote preflight
 
 ```powershell
@@ -137,7 +146,9 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig $Config
 ```
 
-Repeat for the active node using its own configuration.
+Repeat for the active node using its own configuration. The Linux-side preflight now checks the configured Pi model, architecture and expected source CentOS ID/version.
+
+For Pi 4 / CentOS 9, required evidence includes the exact Pi 4 model string, CentOS 9 identity, running kernel, boot files, kexec support, Ethernet and target SD-card layout.
 
 ## 4. Capture inventory and FreeSWITCH configuration
 
@@ -153,7 +164,7 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig $Config
 ```
 
-Copy the resulting artifacts to the Windows workstation:
+Copy the artifacts to the Windows workstation:
 
 ```powershell
 pwsh .\scripts\powershell\Copy-PiosArtifacts.ps1 `
@@ -161,7 +172,7 @@ pwsh .\scripts\powershell\Copy-PiosArtifacts.ps1 `
   -OutputDirectory 'C:\pios-rebuild-artifacts\passive'
 ```
 
-Treat these files as sensitive.
+Treat these files as sensitive and verify their checksums.
 
 ## 5. Take a full 32 GB rollback image
 
@@ -170,12 +181,12 @@ Use the **confirmed whole SD-card device** reported by preflight; do not assume 
 ```powershell
 pwsh .\scripts\powershell\02-full-sd-backup.ps1 `
   -Target <user@passive-pi-ip> `
-  -Device /dev/mmcblk0 `
+  -Device <confirmed-whole-card-device> `
   -OutputDirectory 'C:\pios-rebuild-artifacts\passive' `
   -Label passive-centos-before-debian
 ```
 
-The script creates a raw `.img` file and SHA-256 sidecar on the laptop. A 32 GB card produces approximately a full-card-sized raw file, hence the 80 GB workstation recommendation when retaining both node images plus Debian and other artifacts.
+A 32 GB card produces approximately a full-card-sized raw file, hence the 80 GB recommendation when retaining both node images plus Debian and other artifacts.
 
 ## 6. Rescue readiness
 
@@ -186,11 +197,9 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig $Config
 ```
 
-Do not continue if the Linux-side result is:
+Do not continue if the Linux-side result is `RESCUE_READY=NO`.
 
-```text
-RESCUE_READY=NO
-```
+For Pi 4 / CentOS 9, the rescue kernel/initramfs/DTB values in `$Config` must refer to the **Pi 4 / CentOS 9 rescue build that already passed a non-destructive round trip**.
 
 ## 7. Load rescue without entering it
 
@@ -205,7 +214,7 @@ Loading the kexec image is not the same as executing it.
 
 ## 8. Enter the tested RAM rescue
 
-Only after the rescue round-trip procedure has already been proven and the maintenance gate is approved:
+Only after the profile-specific rescue round trip has already been proven:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -214,8 +223,6 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig $Config `
   -RemoteArgs ENTER_RESCUE
 ```
-
-The normal SSH connection will disappear when Linux transfers control into the RAM rescue.
 
 Reconnect:
 
@@ -226,26 +233,17 @@ pwsh .\scripts\powershell\05-connect-rescue.ps1 `
   -User root
 ```
 
-Inside rescue, re-run the required RAM-root, network, SD-device and mount checks from `RUNBOOK.md` before any write.
+Inside rescue, re-run the RAM-root, network, SD-device and mount checks from `RUNBOOK.md` before any write.
 
 ## 9. Debian image write
 
-The actual SD-card write remains a **Linux rescue-side operation** by design. Do not replace the Linux safety gates with a Windows-only `dd` equivalent.
+The actual SD-card write remains a **Linux rescue-side operation** by design. Do not replace the Linux safety gates with a Windows-only writer.
 
-The approved `06-write-debian.sh` checks that:
+The approved `06-write-debian.sh` checks expected hardware, configured whole-disk target, RAM-resident rescue root, unmounted target/children, explicit `ERASE_CENTOS` confirmation and the approved image checksum where applicable.
 
-- the expected Raspberry Pi hardware is present;
-- the requested target matches the configured whole-disk target;
-- rescue root appears RAM-resident;
-- the target and child partitions are unmounted;
-- the explicit `ERASE_CENTOS` confirmation is present;
-- the approved image checksum is available for local-image mode.
-
-PowerShell is the control console used to connect to rescue and initiate the already-tested rescue-side writer. The exact transfer method must match the tested release procedure in `RELEASE_DAY.md`.
+PowerShell is the control console used to connect to rescue and initiate the already-tested rescue-side writer. The exact transfer method must match `RELEASE_DAY.md`.
 
 ## 10. Validate Debian after first boot
-
-Once the Pi has rebooted into Debian and SSH is back on the normal management port:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -262,7 +260,7 @@ DEBIAN_VALIDATION=PASS
 
 ## 11. Restore FreeSWITCH configuration
 
-Copy the verified export to the Debian Pi, then invoke the restore with the explicit confirmation:
+Copy the verified export and checksum sidecar to the rebuilt Pi, then invoke the restore with the explicit confirmation:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -271,8 +269,6 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig $Config `
   -RemoteArgs @('--archive','/protected/path/freeswitch-config.tgz','--confirm','APPLY_FREESWITCH_CONFIG')
 ```
-
-The archive checksum sidecar must be beside the archive on the Pi.
 
 ## 12. FreeSWITCH smoke test
 
@@ -288,7 +284,7 @@ A smoke-test pass is not the full telephony acceptance. Complete `FREESWITCH_TES
 
 ## PowerShell execution policy
 
-If local policy blocks project scripts, do not permanently weaken the workstation security policy merely for the migration. Prefer a process-scoped invocation where permitted by your organisation, for example:
+If local policy blocks project scripts, do not permanently weaken workstation security policy merely for the migration. Prefer a process-scoped invocation where permitted by your organisation, for example:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
@@ -298,4 +294,6 @@ or use your organisation's approved signing/process policy.
 
 ## Safety rule
 
-PowerShell convenience must never remove a release gate. If a remote command, SSH session, VPN connection, checksum or device identity check behaves differently from the rehearsed procedure, stop and use the rollback/decision path in `RELEASE_DAY.md` rather than improvising.
+PowerShell convenience must never remove a release gate. If a profile, remote command, SSH session, VPN connection, checksum, rescue build or device identity check behaves differently from the rehearsed procedure, stop and use the decision path in `RELEASE_DAY.md` rather than improvising.
+
+For a possible future one-command orchestrator, see the root document `higher-risk-fully-automated-script.md`. It is deliberately treated as a higher-risk design and is not the default production method.
