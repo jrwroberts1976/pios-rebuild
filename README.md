@@ -6,6 +6,7 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 
 - The site VPN terminates on the router, so management access survives Pi reboots.
 - There are two Raspberry Pi nodes. The passive node is rebuilt and proven first while the active CentOS node continues carrying service.
+- The administration laptop is treated as part of the recovery design and must pass its own prerequisite check before either Pi is changed.
 - Debian is not written until a RAM-rescue environment has been tested and a normal reboot back to CentOS has been proven.
 - A full SD-card image and configuration backup are taken before destructive work.
 - The existing FreeSWITCH configuration and runtime/module state are exported separately and copied off-node before rebuild.
@@ -16,28 +17,32 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 
 ## Target sequence
 
-1. Baseline both CentOS nodes and document the active/passive roles.
-2. Export FreeSWITCH configuration/runtime state from both nodes and copy it to secure off-node storage.
-3. Build a reproducible Debian 13 arm64 Raspberry Pi image with required tools and the chosen FreeSWITCH 1.11.x package set where practical.
-4. Validate the exact image and FreeSWITCH in a non-production/lab test where possible.
-5. Build and test the RAM-rescue mechanism on the passive node.
-6. Rebuild the passive node to Debian 13.
-7. Restore the passive node's exported FreeSWITCH configuration onto Debian and reconcile any module/package differences.
-8. Validate Debian, FreeSWITCH, SIP, media, management and monitoring on the passive node.
-9. Soak-test the passive node while the active CentOS node remains in service.
-10. Perform a controlled service failover to the Debian node.
-11. Validate production traffic and maintain a rollback window.
-12. Once stable, rebuild the former active node using the same tested process and its own saved configuration.
-13. Restore active/passive resilience and complete final acceptance testing.
+1. Prepare and validate the administration laptop/workstation, VPN, SSH keys, local storage and toolchain.
+2. Baseline both CentOS nodes and document the active/passive roles.
+3. Export FreeSWITCH configuration/runtime state from both nodes and copy it to secure off-node storage.
+4. Build a reproducible Debian 13 arm64 Raspberry Pi image with required tools and the chosen FreeSWITCH package set where practical.
+5. Validate the exact image and FreeSWITCH in a non-production/lab test where possible.
+6. Build and test the RAM-rescue mechanism on the passive node.
+7. Rebuild the passive node to Debian 13.
+8. Restore the passive node's exported FreeSWITCH configuration onto Debian and reconcile any module/package differences.
+9. Validate Debian, FreeSWITCH, SIP, media, management and monitoring on the passive node.
+10. Soak-test the passive node while the active CentOS node remains in service.
+11. Perform a controlled service failover to the Debian node.
+12. Validate production traffic and maintain a rollback window.
+13. Once stable, rebuild the former active node using the same tested process and its own saved configuration.
+14. Restore active/passive resilience and complete final acceptance testing.
 
 ## Repository layout
 
 ```text
 .
 ├── README.md
+├── .gitignore
+├── .github/workflows/shellcheck.yml
 ├── config/
 │   └── site.env.example
 ├── docs/
+│   ├── ADMIN_LAPTOP_PREREQUISITES.md
 │   ├── PROJECT_PLAN.md
 │   ├── RUNBOOK.md
 │   ├── TEST_PLAN.md
@@ -45,6 +50,7 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 │   └── FREESWITCH_TEST_PLAN.md
 └── scripts/
     ├── lib/common.sh
+    ├── 00-admin-laptop-preflight.sh
     ├── 00-build-debian-image.sh
     ├── 01-preflight.sh
     ├── 02-backup-inventory.sh
@@ -56,6 +62,20 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
     ├── 07-validate-debian.sh
     ├── 07a-restore-freeswitch-config.sh
     └── 08-freeswitch-smoke-test.sh
+```
+
+## Administration laptop prerequisite
+
+Read `docs/ADMIN_LAPTOP_PREREQUISITES.md` first. The workstation must have stable VPN connectivity, key-based SSH access to both Pi nodes, enough protected local storage for the rollback images and migration artifacts, the required CLI tools, and power/sleep settings suitable for long transfers.
+
+Run the non-destructive workstation check before starting:
+
+```bash
+./scripts/00-admin-laptop-preflight.sh \
+  --router <router-ip> \
+  --active <user@active-pi-ip> \
+  --passive <user@passive-pi-ip> \
+  --min-free-gb <calculated-minimum>
 ```
 
 ## FreeSWITCH configuration migration
