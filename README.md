@@ -2,6 +2,13 @@
 
 Remote, staged migration toolkit for rebuilding two-node Raspberry Pi FreeSWITCH sites to Debian 13 without requiring an onsite engineer.
 
+> [!WARNING]
+> **Engineering status: NOT YET END-TO-END TESTED.**
+>
+> This repository currently documents and implements a proposed migration method. The complete process — including the profile-specific RAM-rescue path, full SD-card rollback image, destructive Debian write, first boot, FreeSWITCH restoration and recovery/rollback path — has **not yet been proven end to end on the target production estate**.
+>
+> **Do not use this process for a production migration until the applicable Pi profile has completed the documented lab/passive-node tests and the exact release approach has received peer technical approval.** Peer approval should cover the release commit, runbook, rescue build, Debian image, FreeSWITCH migration method, safety gates and rollback plan. Approval must not be inferred simply because the scripts run successfully.
+
 ## Supported migration profiles
 
 | Profile | Current platform | Target platform |
@@ -60,10 +67,10 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 │   └── workflows/
 │       └── shellcheck.yml                     # Linux shell validation
 ├── config/
-│   ├── site.env.example                      # PI3-CENTOS7 profile template
-│   └── site-pi4-centos9.env.example          # PI4-CENTOS9 profile template
+│   ├── site.env.example                       # PI3-CENTOS7 profile template
+│   └── site-pi4-centos9.env.example           # PI4-CENTOS9 profile template
 ├── docs/
-│   ├── ADMIN_LAPTOP_PREREQUISITES.md         # workstation/VPN/storage prerequisites
+│   ├── ADMIN_LAPTOP_PREREQUISITES.md          # workstation/VPN/storage prerequisites
 │   ├── PROJECT_PLAN.md                        # staged migration project plan
 │   ├── RUNBOOK.md                             # detailed engineering runbook
 │   ├── TEST_PLAN.md                           # end-to-end acceptance tests
@@ -71,9 +78,11 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 │   ├── FREESWITCH_TEST_PLAN.md                # telephony acceptance tests
 │   ├── PI4_CENTOS9.md                         # Pi 4 / CentOS 9 profile details
 │   ├── POWERSHELL.md                          # Windows/PowerShell operating guide
+│   ├── POWERSHELL_VISUAL.md                   # visual PowerShell walkthrough
 │   ├── RELEASE_DAY.md                         # on-the-day change procedure
 │   ├── RELEASE_RECORD.md                      # electronic release-record guidance
-│   └── RELEASE_RECORD_TEMPLATE.md             # generated-record template
+│   ├── RELEASE_RECORD_TEMPLATE.md             # generated-record template
+│   └── images/                                # documentation screenshots/diagrams
 ├── scripts/
 │   ├── lib/
 │   │   └── common.sh                          # shared Linux safety functions
@@ -90,15 +99,15 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 │   ├── 07a-restore-freeswitch-config.sh
 │   ├── 08-freeswitch-smoke-test.sh
 │   └── powershell/
-│       ├── 00-setup-environment.ps1            # clone/pull/pin release commit
-│       ├── 00-admin-laptop-preflight.ps1       # Windows readiness/VPN/storage check
-│       ├── 01-create-release-record.ps1        # detect target/profile and create release record
-│       ├── 02-full-sd-backup.ps1               # raw 32 GB rollback image over SSH
-│       ├── 05-connect-rescue.ps1               # reconnect to RAM rescue
-│       ├── Copy-PiosArtifacts.ps1              # copy/checksum migration evidence
-│       └── Invoke-PiosRemoteStage.ps1           # stage/run Linux scripts over SSH
-└── releases/                                   # generated locally at runtime; ignored by Git
-    └── <change-reference>-<timestamp>.md        # live electronic release evidence
+│       ├── 00-setup-environment.ps1           # clone/pull/pin release commit
+│       ├── 00-admin-laptop-preflight.ps1      # Windows readiness/VPN/storage check
+│       ├── 01-create-release-record.ps1       # detect target/profile and create release record
+│       ├── 02-full-sd-backup.ps1              # raw 32 GB rollback image over SSH
+│       ├── 05-connect-rescue.ps1              # reconnect to RAM rescue
+│       ├── Copy-PiosArtifacts.ps1             # copy/checksum migration evidence
+│       └── Invoke-PiosRemoteStage.ps1         # stage/run Linux scripts over SSH
+└── releases/                                  # generated locally at runtime; ignored by Git
+    └── <change-reference>-<timestamp>.md       # live electronic release evidence
 ```
 
 `releases/` is created locally by the release-record workflow and is intentionally excluded by `.gitignore`; it is shown above because it is part of the operator's working layout even though it is not committed to the repository.
@@ -107,7 +116,7 @@ The higher-risk one-button workflow is currently a **design only** in `higher-ri
 
 ## Windows / PowerShell operation
 
-Windows PowerShell/PowerShell 7 is supported as the administration-laptop control shell. Read `docs/POWERSHELL.md` for the end-to-end command sequence.
+Windows PowerShell/PowerShell 7 is supported as the administration-laptop control shell. Read `docs/POWERSHELL.md` for the end-to-end command sequence and `docs/POWERSHELL_VISUAL.md` for the visual walkthrough.
 
 The PowerShell scripts do not replace the Linux safety checks. They stage and invoke the tested Linux scripts over SSH, retrieve evidence and take rollback images. The actual RAM-rescue and SD-card write checks remain on the Raspberry Pi/rescue environment so they can directly verify the hardware, mounted filesystems and target block device.
 
@@ -226,6 +235,8 @@ After Debian and the required FreeSWITCH package/module set are installed, `07a-
 ## Important safety rule
 
 Do not run `06-write-debian.sh` until the passive node has successfully completed the non-destructive rescue test for its exact hardware/source-OS profile and returned to CentOS. The write script requires an explicit `ERASE_CENTOS` confirmation and refuses to operate on a mounted target device.
+
+In addition, **a successful script result is not production approval**. The process remains untested end to end until the documented tests have actually been completed, and a production migration requires peer technical review/approval of the exact release package.
 
 ## Current technical assumptions
 
