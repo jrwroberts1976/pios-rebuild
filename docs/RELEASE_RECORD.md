@@ -1,12 +1,40 @@
 # Electronic Release Record
 
+## Start here first
+
+If you are carrying out the rebuild, begin with the root document:
+
+```text
+START-HERE.md
+```
+
+That document gives the complete release in plain numbered steps, with the exact command to run, the result you should expect, and when to stop.
+
+This document explains only the **electronic evidence record** used alongside that process.
+
 ## Purpose
 
 The release procedure is designed to be run electronically. You do **not** need to print `RELEASE_DAY.md` and fill it in by hand.
 
-`docs/RELEASE_DAY.md` remains the master operating procedure. Before the maintenance window, create a **local dated release record** for the specific Pi being rebuilt and keep that Markdown file open while you work.
+`docs/RELEASE_DAY.md` remains the detailed on-the-day operating procedure. Before the maintenance window, create a **local dated release record** for the specific Pi being rebuilt and keep that Markdown file open while you work.
 
 Populated release records are written under `releases/` by default. That directory is ignored by Git because the record can contain site-specific hostnames, IP addresses, MAC addresses, artifact paths and operational evidence.
+
+## In simple terms
+
+The process is:
+
+```text
+1. Update/pin the Git checkout.
+2. Run 01-create-release-record.ps1.
+3. The script discovers the Pi using read-only SSH commands.
+4. It creates one dated Markdown file under releases/.
+5. Open that file and keep it open during the change.
+6. Add the GO/NO-GO result and evidence as each release step completes.
+7. Keep the finished record with the migration evidence/change ticket.
+```
+
+If the script reports a profile mismatch, stop. It has not changed the Pi.
 
 ## Create the record
 
@@ -25,6 +53,8 @@ pwsh .\scripts\powershell\01-create-release-record.ps1 `
   -SdDevice /dev/mmcblk0 `
   -DebianImage 'C:\pios-images\pios-debian13-arm64.img.xz'
 ```
+
+Replace every value inside `<...>` with the real value for that site.
 
 ### Raspberry Pi 3 / CentOS 7 example
 
@@ -73,7 +103,9 @@ arm64/aarch64
 
 A mismatch creates the evidence record but returns a **NO-GO** result. It does not change the Pi.
 
-## Example successful output
+## What successful output looks like
+
+The important lines are:
 
 ```text
 ===== RESULT =====
@@ -86,7 +118,30 @@ RELEASE_RECORD_CREATED=YES
 RELEASE_PROFILE_GATE=PASS
 ```
 
-Open the generated Markdown file in VS Code, Notepad, Obsidian or another text editor and update the release-gate table as the work progresses.
+If you see:
+
+```text
+RELEASE_PROFILE_GATE=FAIL
+```
+
+stop and investigate the mismatch. Do not continue to the rebuild steps.
+
+## What to do with the generated file
+
+Open the generated Markdown file in VS Code, Notepad, Obsidian or another text editor.
+
+Keep it open while following `START-HERE.md` and `docs/RELEASE_DAY.md`.
+
+Each time a release gate completes, record:
+
+```text
+Result: PASS / FAIL / NO-GO
+Time:
+Evidence / filename / checksum:
+Notes:
+```
+
+Do not mark a gate PASS simply because a command ran. The expected result described in the procedure must actually be present.
 
 ## What remains manual in the record
 
