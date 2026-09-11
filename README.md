@@ -72,6 +72,7 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
     ├── 07a-restore-freeswitch-config.sh
     ├── 08-freeswitch-smoke-test.sh
     └── powershell/
+        ├── 00-setup-environment.ps1
         ├── 00-admin-laptop-preflight.ps1
         ├── Invoke-PiosRemoteStage.ps1
         ├── 02-full-sd-backup.ps1
@@ -84,6 +85,46 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 Windows PowerShell/PowerShell 7 is supported as the administration-laptop control shell. Read `docs/POWERSHELL.md` for the end-to-end command sequence.
 
 The PowerShell scripts do not replace the Linux safety checks. They stage and invoke the tested Linux scripts over SSH, retrieve evidence and take rollback images. The actual RAM-rescue and SD-card write checks remain on the Raspberry Pi/rescue environment so they can directly verify the hardware, mounted filesystems and target block device.
+
+### Set up or refresh the release checkout
+
+If the repository has not been cloned yet:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+git clone https://github.com/jrwroberts1976/pios-rebuild.git $RepoPath
+Set-Location $RepoPath
+```
+
+If it already exists:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+Set-Location $RepoPath
+git status --short
+git fetch origin --prune
+git checkout main
+git pull --ff-only origin main
+git log -1 --oneline
+$ReleaseCommit = (git rev-parse HEAD).Trim()
+Write-Host "Release commit: $ReleaseCommit"
+```
+
+The working tree must be clean before the pull. After recording the release commit, do not run another `git pull` during the migration.
+
+Once the repository already exists, the same preparation can be performed with:
+
+```powershell
+pwsh .\scripts\powershell\00-setup-environment.ps1 `
+  -RepoPath $RepoPath `
+  -Branch main
+```
+
+Required result:
+
+```text
+ENVIRONMENT_SETUP=PASS
+```
 
 Run the Windows preflight with:
 
@@ -101,6 +142,7 @@ For two 32 GB SD cards, **80 GB free on the laptop is the recommended working mi
 
 Use `docs/RELEASE_DAY.md` as the operator's **on-the-day change document**. It contains:
 
+- Git clone/fetch/pull and exact release-commit pinning;
 - the change record and actual node values;
 - a 3-4 hour first-passive-node working window;
 - PowerShell commands in release order;
