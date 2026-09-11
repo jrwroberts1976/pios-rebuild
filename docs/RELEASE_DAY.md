@@ -2,11 +2,18 @@
 
 ## Purpose
 
-This is the **on-the-day operator document** for rebuilding one Raspberry Pi from CentOS to Debian using the tested RAM-rescue procedure. It is intentionally shorter and more operational than the full project runbook.
+This is the **on-the-day operator document** for rebuilding one Raspberry Pi from CentOS to Debian 13 using the already-tested RAM-rescue procedure.
 
-It assumes all engineering, image build, FreeSWITCH compatibility work and the non-destructive RAM-rescue round-trip test have already been completed successfully.
+Supported profiles:
 
-Do not use this document to invent or test the rescue method for the first time during the production change.
+| Profile | Source | Target |
+| --- | --- | --- |
+| `PI3-CENTOS7` | Raspberry Pi 3 / CentOS 7 | Debian 13 arm64 |
+| `PI4-CENTOS9` | Raspberry Pi 4 / CentOS 9 | Debian 13 arm64 |
+
+Do not use this document to invent or test the rescue method for the first time during production. The exact profile-specific rescue round trip and Debian image must already have been proven.
+
+For Pi 4 / CentOS 9, also read `PI4_CENTOS9.md`.
 
 ---
 
@@ -22,21 +29,25 @@ Planned start:
 Planned finish:
 Site:
 
+Migration profile: PI3-CENTOS7 / PI4-CENTOS9
+
 Active node hostname:
 Active node IP:
-Active node OS:
+Active node OS/version:
 
 Node being rebuilt:
 Node role at start: PASSIVE
 Node IP:
 Node MAC:
 Raspberry Pi model:
+Current CentOS version:
 SD device:
 SD capacity: 32 GB
 
 VPN router IP:
 Debian image filename:
 Debian image SHA512:
+Rescue build/kernel/initramfs/DTB identity:
 Git commit used:
 Rollback image filename:
 Rollback image SHA256:
@@ -44,73 +55,58 @@ FreeSWITCH export filename:
 FreeSWITCH export SHA256:
 ```
 
-Do not infer the active/passive role from hostnames. Confirm the live service state.
+Do not infer active/passive state from hostname alone. Confirm actual live service state.
+
+A mismatch between **migration profile, Raspberry Pi model or current CentOS version is a NO-GO**.
 
 ---
 
 ## Expected duration
 
-For the **first passive-node migration**, book a **3-4 hour maintenance/engineering window**.
+For the **first passive-node migration of a profile**, book a **3-4 hour maintenance/engineering window**.
 
-Once the first migration is proven, a subsequent Pi should normally require approximately **1.5-2.5 hours**, although a 2-3 hour working allowance remains sensible.
-
-The 3-4 hour first-node window is intended to cover:
+Once that profile is proven, a subsequent Pi should normally require approximately **1.5-2.5 hours**, although a 2-3 hour working allowance remains sensible.
 
 | Activity | Expected time |
 | --- | ---: |
 | Final pre-flight and role confirmation | 10-15 min |
 | Final configuration/inventory export | 15-30 min |
 | Full 32 GB rollback image | 20-45 min |
-| Enter and validate previously proven RAM rescue | 10-20 min |
+| Enter/validate proven RAM rescue | 10-20 min |
 | Write/configure Debian | 15-30 min |
 | Debian first boot and OS validation | 10-20 min |
 | FreeSWITCH restore/reconciliation | 20-40 min |
 | FreeSWITCH and functional validation | 20-40 min |
 | Contingency/decision allowance | 30-60 min |
 
-The scheduled soak period is **not** part of this hands-on migration window.
+The scheduled soak period is **not** part of the hands-on migration window.
 
 ---
 
-# RELEASE GATE -1 - Set up the PowerShell/Git environment
+# RELEASE GATE -1 - Set up PowerShell and Git
 
-Do this **before the maintenance window starts**. The purpose is to make sure the administration laptop is running the latest reviewed release code and then pin the exact commit for the whole change.
+Do this before the maintenance window starts.
 
-Open PowerShell 7.
-
-If the repository has not been cloned onto this laptop yet:
+If the repository has not been cloned:
 
 ```powershell
 $RepoPath = Join-Path $HOME 'pios-rebuild'
-
 git clone https://github.com/jrwroberts1976/pios-rebuild.git $RepoPath
 Set-Location $RepoPath
 ```
 
-If the repository already exists:
+If it already exists:
 
 ```powershell
 $RepoPath = Join-Path $HOME 'pios-rebuild'
 Set-Location $RepoPath
-```
-
-The working tree must be clean before it is updated:
-
-```powershell
 git status --short
-```
-
-Expected result: **no output**. If files are listed, stop and review the local changes before pulling.
-
-Update from GitHub using a fast-forward-only pull:
-
-```powershell
 git fetch origin --prune
 git checkout main
 git pull --ff-only origin main
 ```
 
-Record the exact release version:
+Then record the exact release version:
 
 ```powershell
 git status
@@ -119,9 +115,7 @@ $ReleaseCommit = (git rev-parse HEAD).Trim()
 Write-Host "Release commit: $ReleaseCommit"
 ```
 
-Copy the full commit SHA into **Git commit used** in the change record above.
-
-Once the repository has already been cloned, the same checks can be run using the supplied helper:
+Or use:
 
 ```powershell
 pwsh .\scripts\powershell\00-setup-environment.ps1 `
@@ -135,41 +129,60 @@ Required result:
 ENVIRONMENT_SETUP=PASS
 ```
 
-`git pull --ff-only` is deliberate. If the local checkout has diverged, the release preparation must stop rather than creating an unreviewed merge on the administration laptop.
-
-**IMPORTANT:** after the release commit has been recorded, do **not** run `git pull` again during the change. Every command in the release must come from that exact pinned revision.
+After the release commit is recorded, **do not run `git pull` again during the change**.
 
 ```text
-[ ] Repository cloned or existing checkout located
 [ ] Working tree clean
 [ ] git fetch origin --prune completed
 [ ] main checked out
 [ ] git pull --ff-only origin main completed
-[ ] Exact full commit SHA recorded in change record
-[ ] No further Git updates will be made during this change
+[ ] Exact commit SHA recorded
+[ ] No further Git updates during this change
 ```
-
-**NO-GO:** if the repository cannot be updated cleanly or its exact commit cannot be identified, stop before the maintenance activity.
 
 ---
 
-# RELEASE GATE 0 - Before the change window
+# RELEASE GATE 0 - Select and verify migration profile
 
-All items below must already be true.
+For Pi 3 / CentOS 7 use the Pi 3 profile configuration. For Pi 4 / CentOS 9 use:
+
+```text
+config/site-pi4-centos9.env.example
+```
+
+The populated production config must remain outside Git or otherwise protected.
+
+Confirm:
+
+```text
+[ ] Migration profile selected
+[ ] Raspberry Pi model matches profile
+[ ] Current CentOS version matches profile
+[ ] Correct profile-specific rescue build has already passed round-trip testing
+[ ] Exact Debian image has been boot-tested on this Pi hardware family
+```
+
+For `PI4-CENTOS9`, required source identity is Raspberry Pi 4 + CentOS 9. A Pi 3 rescue validation does not count.
+
+---
+
+# RELEASE GATE 1 - Before the change window
+
+All items below must already be true:
 
 ```text
 [ ] Debian image built and checksum recorded
-[ ] Exact Debian image boot-tested on representative hardware
+[ ] Exact Debian image boot-tested on representative target hardware
 [ ] FreeSWITCH on Debian test completed
 [ ] Required FreeSWITCH modules identified
-[ ] RAM-rescue build tested
-[ ] CentOS -> RAM rescue -> CentOS round trip proven on passive node
+[ ] Profile-specific RAM-rescue build tested
+[ ] Current CentOS -> RAM rescue -> same CentOS round trip proven on passive node
 [ ] VPN confirmed to terminate on router, not either Pi
 [ ] SSH key access confirmed to both nodes
 [ ] Laptop connected to mains power
 [ ] Laptop sleep/hibernate disabled
 [ ] At least 80 GB local free space when retaining both 32 GB card images
-[ ] Repository working tree reviewed and exact commit recorded
+[ ] Repository commit pinned
 [ ] Rollback procedure understood
 ```
 
@@ -177,9 +190,9 @@ All items below must already be true.
 
 ---
 
-# RELEASE GATE 1 - Start-of-change validation
+# RELEASE GATE 2 - Start-of-change validation
 
-From the Windows administration laptop, connect the VPN and run:
+Connect the VPN and run:
 
 ```powershell
 pwsh .\scripts\powershell\00-admin-laptop-preflight.ps1 `
@@ -195,29 +208,23 @@ Required result:
 ADMIN_LAPTOP_PREFLIGHT=PASS
 ```
 
-Then confirm manually:
+Then verify:
 
 ```text
-[ ] Active node is healthy and carrying service
-[ ] Passive node is healthy but not required for current production traffic
+[ ] Active node healthy and carrying service
+[ ] Passive node healthy and not required for current production traffic
 [ ] Both nodes reachable over VPN/SSH
-[ ] No unrelated site/network incident is in progress
-[ ] Correct node has been selected for rebuild
+[ ] No unrelated site/network incident in progress
+[ ] Correct node selected for rebuild
 ```
 
-Record the start time.
-
-```text
-Actual start:
-Gate 1 decision: GO / NO-GO
-Notes:
-```
+Record actual start time and GO/NO-GO decision.
 
 ---
 
-# RELEASE GATE 2 - Final baseline and configuration export
+# RELEASE GATE 3 - Final node/profile preflight
 
-Run the passive-node preflight:
+Run:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -226,80 +233,81 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig <secure-site-config-path>
 ```
 
-Capture the final inventory:
+Required profile checks must pass:
+
+```text
+[ ] Pi model matches EXPECTED_MODEL_REGEX
+[ ] Architecture matches EXPECTED_ARCH
+[ ] CentOS ID matches EXPECTED_SOURCE_OS_ID
+[ ] CentOS version matches EXPECTED_SOURCE_OS_VERSION
+[ ] Whole target device confirmed
+[ ] Expected network interface/default route present
+```
+
+For Pi 4 / CentOS 9 this must explicitly prove Pi 4 and CentOS 9.
+
+---
+
+# RELEASE GATE 4 - Final inventory and FreeSWITCH export
+
+Run:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -Target <user@passive-pi-ip> `
   -RemoteScript 02-backup-inventory.sh `
   -SiteConfig <secure-site-config-path>
-```
 
-Capture FreeSWITCH configuration/runtime state:
-
-```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -Target <user@passive-pi-ip> `
   -RemoteScript 02a-export-freeswitch-config.sh `
   -SiteConfig <secure-site-config-path>
-```
 
-Copy the artifacts off the Pi:
-
-```powershell
 pwsh .\scripts\powershell\Copy-PiosArtifacts.ps1 `
   -Target <user@passive-pi-ip> `
   -OutputDirectory 'C:\pios-rebuild-artifacts\passive'
 ```
 
-Verify the expected export files and checksums are present locally.
+Verify:
 
 ```text
-[ ] Final preflight recorded
-[ ] Inventory copied off-node
+[ ] Final inventory copied off-node
 [ ] FreeSWITCH export copied off-node
-[ ] FreeSWITCH archive checksum verified
+[ ] FreeSWITCH export checksum verified
 ```
 
 **NO-GO:** do not overwrite the SD card without the FreeSWITCH export safely off-node.
 
 ---
 
-# RELEASE GATE 3 - Full SD-card rollback image
+# RELEASE GATE 5 - Full 32 GB rollback image
 
-Take the final full 32 GB rollback image using the **confirmed** whole-card device:
+Use the **confirmed whole-card device** from preflight:
 
 ```powershell
 pwsh .\scripts\powershell\02-full-sd-backup.ps1 `
   -Target <user@passive-pi-ip> `
-  -Device /dev/mmcblk0 `
+  -Device <confirmed-whole-card-device> `
   -OutputDirectory 'C:\pios-rebuild-artifacts\passive' `
   -Label passive-centos-before-debian
 ```
 
-Record:
-
-```text
-Rollback image:
-Rollback image bytes:
-Rollback SHA256:
-Backup finish time:
-```
+Record rollback image path, bytes, SHA-256 and completion time.
 
 Required:
 
 ```text
-[ ] Backup command completed successfully
+[ ] Backup completed successfully
 [ ] Raw image has expected full-card size
-[ ] SHA256 sidecar created
-[ ] File is on the laptop/approved off-node storage
+[ ] SHA256 sidecar exists
+[ ] Image is on approved off-node storage
 ```
 
 **NO-GO:** if the image is incomplete, unexpectedly small or unavailable, stop.
 
 ---
 
-# RELEASE GATE 4 - RAM-rescue readiness
+# RELEASE GATE 6 - RAM-rescue readiness and load
 
 Run:
 
@@ -316,7 +324,9 @@ Required result:
 RESCUE_READY=YES
 ```
 
-Then load the already-tested rescue image without executing it:
+For Pi 4 / CentOS 9, confirm the rescue kernel/initramfs/DTB/cmdline combination is the exact Pi 4 profile that passed the non-destructive test.
+
+Load it without executing:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -325,26 +335,19 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -SiteConfig <secure-site-config-path>
 ```
 
-Confirm the loaded rescue matches the previously tested kernel/initramfs/DTB/cmdline combination.
-
-```text
-Gate 4 decision: GO / NO-GO
-Notes:
-```
-
 ---
 
-# RELEASE GATE 5 - Enter RAM rescue
+# RELEASE GATE 7 - Enter RAM rescue
 
-Before entering rescue verify one final time:
+Final checks:
 
 ```text
 [ ] Active CentOS node still healthy
 [ ] VPN stable
-[ ] Full rollback image available locally
-[ ] FreeSWITCH export available locally
+[ ] Full rollback image available + checksummed
+[ ] FreeSWITCH export available + checksummed
 [ ] Correct passive Pi selected
-[ ] Rescue was previously round-trip tested
+[ ] Profile-specific rescue previously round-trip tested
 ```
 
 Enter rescue:
@@ -357,9 +360,7 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -RemoteArgs ENTER_RESCUE
 ```
 
-The normal SSH session will terminate.
-
-Reconnect to rescue:
+Reconnect:
 
 ```powershell
 pwsh .\scripts\powershell\05-connect-rescue.ps1 `
@@ -375,51 +376,50 @@ findmnt /
 ip -br addr
 ip route
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
-fdisk -l /dev/mmcblk0
+fdisk -l <confirmed-whole-card-device>
 ```
 
 Required:
 
 ```text
 [ ] Rescue root is RAM/initramfs
-[ ] Expected wired network interface has correct connectivity
+[ ] Expected wired network works
 [ ] Default route present
 [ ] VPN path reaches rescue SSH
-[ ] Correct 32 GB SD card is visible
-[ ] Target card/child partitions are not mounted for the write
+[ ] Correct 32 GB SD card visible
+[ ] Target and child partitions unmounted
 ```
 
-**STOP:** if rescue SSH cannot be reached, do not improvise a disk write.
+**STOP:** if rescue validation fails, do not write Debian.
 
 ---
 
-# RELEASE GATE 6 - Destructive Debian write
+# RELEASE GATE 8 - Destructive Debian write
 
 This is the point of destructive change.
 
-Before the command is entered, read aloud/confirm:
+Before proceeding confirm and record:
 
 ```text
+PROFILE: <PI3-CENTOS7 / PI4-CENTOS9>
 NODE: <passive hostname/IP>
 ROLE: PASSIVE
+PI MODEL: <confirmed model>
+SOURCE OS: <confirmed CentOS version>
 TARGET DISK: <confirmed whole SD device>
 ROLLBACK IMAGE: AVAILABLE + CHECKSUMMED
 DEBIAN IMAGE: APPROVED + CHECKSUM MATCHES
 ACTIVE NODE: HEALTHY
 ```
 
-Use the exact image-write method already proven during engineering. The Linux rescue-side writer remains the authoritative safety gate.
-
-Example when the approved image is available to rescue:
+Use the already-tested Linux rescue-side writer:
 
 ```bash
 bash /path/to/06-write-debian.sh \
-  --target /dev/mmcblk0 \
+  --target <confirmed-whole-card-device> \
   --image /path/to/approved-debian.img.xz \
   --confirm ERASE_CENTOS
 ```
-
-Do **not** alter the target device or bypass the RAM-root/unmounted/checksum checks merely to make the command proceed.
 
 Required result:
 
@@ -427,30 +427,17 @@ Required result:
 DEBIAN_IMAGE_WRITE_COMPLETE=YES
 ```
 
-After the write, do not reboot immediately. Complete the tested node-specific hostname/network/SSH configuration and inspect the resulting filesystems first.
+Do not bypass the RAM-root, unmounted-target, model or checksum gates.
 
-Record:
-
-```text
-Write start:
-Write finish:
-Write result:
-```
+After the write, do not reboot immediately. Apply only the tested node-specific hostname/network/SSH configuration and inspect the new filesystems first.
 
 ---
 
-# RELEASE GATE 7 - First Debian boot
+# RELEASE GATE 9 - First Debian boot
 
-When the offline filesystem checks have passed:
+Reboot only after offline checks pass. Wait for normal SSH to return through the router VPN.
 
-```bash
-sync
-reboot
-```
-
-Wait for normal management SSH to return through the router VPN.
-
-Run the Debian validation from PowerShell:
+Run:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -465,30 +452,15 @@ Required result:
 DEBIAN_VALIDATION=PASS
 ```
 
-Also verify manually:
-
-```text
-[ ] Hostname correct
-[ ] IP/MAC/interface correct
-[ ] Default gateway correct
-[ ] DNS resolution works
-[ ] SSH key access works
-[ ] Time/date correct
-[ ] No unexpected failed systemd units
-[ ] Storage layout correct
-```
-
-If Debian is reachable but validation fails, keep production on the untouched active CentOS node and troubleshoot/rebuild the passive node.
+Also verify hostname, IP/MAC/interface, gateway, DNS, SSH key access, time, systemd health and storage layout.
 
 ---
 
-# RELEASE GATE 8 - FreeSWITCH restore and smoke test
+# RELEASE GATE 10 - FreeSWITCH restore and smoke test
 
-Confirm all required Debian FreeSWITCH packages/modules are installed before restoring the old configuration.
+Confirm required Debian FreeSWITCH packages/modules are present. Copy the verified FreeSWITCH export and checksum sidecar to Debian.
 
-Copy the verified passive-node FreeSWITCH export and its checksum sidecar to the rebuilt Pi.
-
-Then run:
+Run the restore and then smoke test:
 
 ```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
@@ -496,11 +468,7 @@ pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -RemoteScript 07a-restore-freeswitch-config.sh `
   -SiteConfig <secure-site-config-path> `
   -RemoteArgs @('--archive','/protected/path/freeswitch-config.tgz','--confirm','APPLY_FREESWITCH_CONFIG')
-```
 
-Run the smoke test:
-
-```powershell
 pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
   -Target <user@passive-pi-ip> `
   -RemoteScript 08-freeswitch-smoke-test.sh `
@@ -514,34 +482,19 @@ Required:
 FREESWITCH_SMOKE_TEST=PASS
 ```
 
-Complete the functional test plan, including where applicable:
+Complete the functional test plan: required modules, Sofia profiles, gateways/trunks, registrations, inbound/outbound calls, two-way RTP/audio, DTMF, codecs, caller ID, logging/monitoring and reboot persistence.
 
-```text
-[ ] Required modules loaded
-[ ] Sofia profiles healthy
-[ ] Gateways/trunks expected state
-[ ] Test endpoint registration
-[ ] Inbound call path
-[ ] Outbound call path
-[ ] Two-way RTP/audio
-[ ] DTMF
-[ ] Codec negotiation
-[ ] Caller ID / presentation
-[ ] Logging/monitoring
-[ ] Reboot persistence
-```
-
-Do not fail production service over to Debian merely because the service process starts.
+Do not fail production service over merely because the FreeSWITCH process starts.
 
 ---
 
-# RELEASE GATE 9 - End-of-day decision
+# RELEASE GATE 11 - End-of-day decision
 
-For the first passive migration, the normal successful end state is:
+Normal successful end state for the first passive migration:
 
 ```text
-ACTIVE NODE: original CentOS node, still carrying production
-PASSIVE NODE: Debian, rebuilt and validated
+ACTIVE NODE: original CentOS node still carrying production
+PASSIVE NODE: Debian rebuilt and validated
 NEXT STEP: 24-48 hour passive soak
 ```
 
@@ -557,7 +510,7 @@ Issues / defects raised:
 Engineer decision:
 ```
 
-If the passive node passes, begin the agreed soak. **Do not rebuild the active CentOS node on the same day merely because the first rebuild finished early.**
+Do not rebuild the active CentOS node on the same day merely because the first rebuild finished early.
 
 ---
 
@@ -566,34 +519,35 @@ If the passive node passes, begin the agreed soak. **Do not rebuild the active C
 | Point reached | Action |
 | --- | --- |
 | Before entering rescue | Stop change; no OS rollback required |
-| Rescue running, SD untouched | Reboot back to CentOS |
-| Debian write has started/finished but rescue is alive | Restore the verified full CentOS image to the same confirmed SD device |
-| Debian boots but fails validation | Keep active CentOS node serving production; repair/rebuild passive |
-| FreeSWITCH restore/testing fails | Keep active CentOS node serving production; restore clean Debian config or rebuild passive |
-| Later production failover fails | Fail service back to the untouched CentOS node |
+| Rescue running, SD untouched | Reboot back to original CentOS |
+| Debian write started/finished but rescue alive | Restore verified full CentOS image to same confirmed SD device |
+| Debian boots but validation fails | Keep active CentOS node serving production; repair/rebuild passive |
+| FreeSWITCH restore/testing fails | Keep active CentOS serving; restore clean Debian config or rebuild passive |
+| Later production failover fails | Fail service back to untouched CentOS node |
 
-A rollback is a successful controlled outcome when a release gate fails; do not continue solely to avoid recording a failed change.
+A rollback is a successful controlled outcome when a release gate fails.
 
 ---
 
 # Absolute stop conditions
 
-Stop rather than improvise if any of the following occurs:
+Stop rather than improvise if:
 
 ```text
+- migration profile does not match Pi model/source CentOS version
 - VPN/router connectivity becomes unreliable
 - active/passive role cannot be proved
 - active production node becomes unhealthy
 - target disk identity is uncertain
 - rollback image is missing or suspect
 - FreeSWITCH export is missing or suspect
-- rescue readiness does not pass
-- rescue cannot be reached over the VPN
+- profile-specific rescue readiness/round-trip has not passed
+- rescue cannot be reached over VPN
 - rescue root is not demonstrably RAM-resident
-- target card or a child partition remains mounted
-- Debian image checksum does not match the approved artifact
+- target card or child partition remains mounted
+- Debian image checksum does not match approved artifact
 - unexpected hardware/boot layout is observed
-- unresolved Severity 1 or Severity 2 FreeSWITCH defect exists
+- unresolved Severity 1/2 FreeSWITCH defect exists
 ```
 
 ---
@@ -602,14 +556,10 @@ Stop rather than improvise if any of the following occurs:
 
 After the rebuilt Debian passive node has completed its **24-48 hour passive soak**, schedule a separate controlled production failover window of approximately **1-2 hours**.
 
-At that later release:
+At that release, confirm both nodes healthy, refresh any configuration export that may have changed, move service to Debian, test critical telephony paths immediately, return service to CentOS if acceptance fails, and keep the former CentOS active node unchanged during the production soak.
 
-1. confirm both nodes healthy;
-2. take/refresh any configuration export that may have changed;
-3. move service from CentOS active to Debian;
-4. test inbound/outbound calls, RTP, DTMF, caller ID and gateways immediately;
-5. if acceptance fails, return service to CentOS;
-6. if acceptance passes, keep the former CentOS active node unchanged during the agreed production soak;
-7. only after production soak approval schedule the second-node rebuild.
+Only after production soak approval should the second node be rebuilt.
 
 This deliberately separates **OS migration risk** from **production failover risk**.
+
+For a possible future one-command path, see `../higher-risk-fully-automated-script.md`. That design is intentionally classified as higher risk and does not replace this release-day process.
