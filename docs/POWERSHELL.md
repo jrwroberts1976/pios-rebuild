@@ -34,6 +34,7 @@ The full SD-card backup helper intentionally uses binary-safe command redirectio
 scripts/powershell/
 ├── 00-setup-environment.ps1
 ├── 00-admin-laptop-preflight.ps1
+├── 01-create-release-record.ps1
 ├── Invoke-PiosRemoteStage.ps1
 ├── 02-full-sd-backup.ps1
 ├── Copy-PiosArtifacts.ps1
@@ -118,6 +119,45 @@ EXPECTED_SOURCE_OS_VERSION='9'
 ```
 
 A profile mismatch is a NO-GO. Do not loosen those values just to make the preflight pass.
+
+## 1a. Create the live electronic release record
+
+You do **not** need to print `RELEASE_DAY.md`. The recommended workflow is to create a dated local Markdown record and keep it open in VS Code or another editor during the change.
+
+Create the record after the Git commit has been pinned and before the maintenance work begins.
+
+Pi 4 / CentOS 9 example:
+
+```powershell
+pwsh .\scripts\powershell\01-create-release-record.ps1 `
+  -Profile PI4-CENTOS9 `
+  -Target <user@passive-pi-ip> `
+  -Active <user@active-pi-ip> `
+  -Router <router-ip> `
+  -Site '<site-name>' `
+  -ChangeReference '<change-reference>' `
+  -SdDevice /dev/mmcblk0 `
+  -DebianImage 'C:\pios-images\pios-debian13-arm64.img.xz'
+```
+
+The generator performs read-only SSH discovery and automatically records the exact Git commit, node identities, Pi model, architecture, current OS, MAC address, detected SD-card capacity and Debian image SHA512. It also checks that the selected profile matches the actual target.
+
+Expected successful result:
+
+```text
+RELEASE_RECORD_CREATED=YES
+RELEASE_PROFILE_GATE=PASS
+```
+
+If the detected hardware/OS does not match the selected profile, the evidence record is still created but the command returns:
+
+```text
+RELEASE_PROFILE_GATE=NO-GO
+```
+
+Do not continue the migration in that case.
+
+Generated records are stored under `releases/` by default and are intentionally ignored by Git. Update the release-gate table in that file as the change progresses. See `RELEASE_RECORD.md` and `RELEASE_RECORD_TEMPLATE.md`.
 
 ## 2. Run the Windows laptop preflight
 
