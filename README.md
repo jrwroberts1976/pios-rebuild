@@ -19,13 +19,19 @@ Remote, staged migration toolkit for rebuilding two-node Raspberry Pi FreeSWITCH
 >
 > This is a **NO-GO for kexec on that specific Debian kernel only**. It does **not** prove that the production CentOS kernels lack kexec support. The actual `PI3-CENTOS7` and `PI4-CENTOS9` targets must each pass `scripts/00-source-kexec-preflight.sh` and a separately gated same-kernel `kexec -l` / `kexec -u` proof before the RAM-rescue design is approved for that profile.
 >
+> **External research note (2026-09-11):** no public example was found of the exact end-to-end workflow used by this project — CentOS Raspberry Pi -> kexec RAM rescue -> overwrite the same SD card remotely -> reboot into Debian. However, there is useful supporting evidence for both profiles. Raspberry Pi 3 / CentOS 7 deployments commonly used the 32-bit `armv7hl`/`armv7l` CentOS build, and Raspberry Pi 3 hardware has historical Linux kexec/crash-kexec precedent. A 32-bit CentOS source does **not** by itself invalidate this design: a 32-bit Pi-compatible RAM rescue can still run from memory and write a Debian 13 arm64 image to the SD card for the subsequent normal firmware boot. The Pi 3 source architecture therefore must be discovered rather than assumed to be `aarch64`.
+>
+> The Pi 4 / CentOS 9 profile appears more promising. CentOS Stream 9 has been run on Raspberry Pi 4 using an AArch64 Raspberry-Pi-specific kernel, and the RHEL 9 family added `kexec_file_load` support for 64-bit ARM. That is encouraging precedent, but it does **not** prove that the particular Raspberry Pi EL9 kernel installed on the target has usable `CONFIG_KEXEC` or `CONFIG_KEXEC_FILE` support. The actual target kernel remains authoritative.
+>
 > Current profile status:
 >
 > | System / profile | kexec status | Next action |
 > | --- | --- | --- |
 > | `admin-01` / Debian 13 / Pi 3 lab host | **NO-GO with current kernel** | Retain as negative lab evidence; do not use it as a rescue-path proof |
-> | `PI3-CENTOS7` | **UNTESTED** | Run source kexec preflight and same-kernel load/unload proof on the actual CentOS 7 target |
-> | `PI4-CENTOS9` | **UNTESTED** | Run source kexec preflight and same-kernel load/unload proof on the actual CentOS 9 target |
+> | `PI3-CENTOS7` | **UNTESTED — plausible, source may be 32-bit ARM** | Discover actual architecture/kernel config; do not reject `armv7l` solely because Debian 13 target is arm64; run same-kernel load/unload proof |
+> | `PI4-CENTOS9` | **UNTESTED — promising AArch64 precedent** | Inspect the actual Pi-specific EL9 kernel config and run same-kernel load/unload proof |
+>
+> The project decision remains evidence-driven: **the actual source kernels decide whether kexec is available**. Generic Raspberry Pi, Debian, RHEL or CentOS precedent is supporting evidence only and is not a production GO gate.
 >
 > See `docs/KEXEC_LAB_VALIDATION.md` and `docs/SOURCE_PI_PREREQUISITES.md` for the recorded evidence and target-node checks.
 
