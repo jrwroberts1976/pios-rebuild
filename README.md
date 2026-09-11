@@ -2,6 +2,33 @@
 
 Remote, staged migration toolkit for rebuilding two-node Raspberry Pi FreeSWITCH sites to Debian 13 without requiring an onsite engineer.
 
+## Current kexec validation status
+
+> [!IMPORTANT]
+> **Latest lab result (2026-09-11): the current Debian 13 kernel on `admin-01` cannot perform a kexec load.**
+>
+> The Raspberry Pi 3 lab host successfully passed the userspace/tooling, boot-artifact, live-DTB, network and storage checks, but the same-kernel load proof failed with:
+>
+> ```text
+> kexec_load failed: Function not implemented
+> KEXEC_LOAD_TEST=FAIL
+> load_rc=255
+> ```
+>
+> Its kernel configuration also reports `# CONFIG_KEXEC_FILE is not set`. Nothing was executed, no reboot occurred and no disk or boot configuration was changed.
+>
+> This is a **NO-GO for kexec on that specific Debian kernel only**. It does **not** prove that the production CentOS kernels lack kexec support. The actual `PI3-CENTOS7` and `PI4-CENTOS9` targets must each pass `scripts/00-source-kexec-preflight.sh` and a separately gated same-kernel `kexec -l` / `kexec -u` proof before the RAM-rescue design is approved for that profile.
+>
+> Current profile status:
+>
+> | System / profile | kexec status | Next action |
+> | --- | --- | --- |
+> | `admin-01` / Debian 13 / Pi 3 lab host | **NO-GO with current kernel** | Retain as negative lab evidence; do not use it as a rescue-path proof |
+> | `PI3-CENTOS7` | **UNTESTED** | Run source kexec preflight and same-kernel load/unload proof on the actual CentOS 7 target |
+> | `PI4-CENTOS9` | **UNTESTED** | Run source kexec preflight and same-kernel load/unload proof on the actual CentOS 9 target |
+>
+> See `docs/KEXEC_LAB_VALIDATION.md` and `docs/SOURCE_PI_PREREQUISITES.md` for the recorded evidence and target-node checks.
+
 > [!WARNING]
 > **Engineering status: NOT YET END-TO-END TESTED.**
 >
