@@ -27,18 +27,48 @@ At minimum it must have stable VPN access, key-based SSH to both nodes, the requ
 
 Both Pi estates use 32 GB SD cards. When retaining both full raw card images on the workstation, **80 GB free space is the recommended release-day minimum**.
 
+### Source CentOS Pi prerequisites
+
+Read `SOURCE_PI_PREREQUISITES.md` before the RAM-rescue stage.
+
+`kexec-tools` is mandatory on each source Pi because it provides the `kexec` command used to load and execute the RAM-rescue kernel/initramfs.
+
+For `PI3-CENTOS7`:
+
+```bash
+sudo yum install -y kexec-tools
+```
+
+For `PI4-CENTOS9`:
+
+```bash
+sudo dnf install -y kexec-tools
+```
+
+Verify:
+
+```bash
+command -v kexec
+kexec --version
+```
+
+The running kernel must also expose usable kexec support, normally including `CONFIG_KEXEC=y` or a supported `CONFIG_KEXEC_FILE` configuration. Installing the package alone cannot add missing kernel support.
+
+`03-rescue-readiness.sh` must report both `kexec_tool=PASS` and `kexec_kernel=PASS` before the RAM-rescue stage can proceed.
+
 ### Site and platform prerequisites
 
 1. Select the correct migration profile and verify the expected Pi model and source CentOS version.
 2. Confirm router-hosted VPN remains available independently of either Pi.
 3. Confirm both Pi roles, IPs, MAC addresses, hostnames and current FreeSWITCH responsibilities.
-4. Export and securely copy off-node the complete FreeSWITCH configuration/runtime manifest from **each** node.
-5. Capture SIP trunk, extension, gateway, codec, dialplan, ACL, NAT, RTP, certificate, script and firewall requirements.
-6. Build a reproducible Debian 13 arm64 image containing the required operating-system/migration tooling and chosen FreeSWITCH packages where practical.
-7. Test the exact image and FreeSWITCH on representative hardware for the selected profile.
-8. Verify `kexec` support and build/test a RAM-rescue environment on the passive node for that profile.
-9. Take an off-node full 32 GB SD-card image before destructive work.
-10. Keep the active CentOS node untouched until the passive Debian node has passed production soak.
+4. Confirm `kexec-tools` is installed and kernel kexec support passes on the source Pi.
+5. Export and securely copy off-node the complete FreeSWITCH configuration/runtime manifest from **each** node.
+6. Capture SIP trunk, extension, gateway, codec, dialplan, ACL, NAT, RTP, certificate, script and firewall requirements.
+7. Build a reproducible Debian 13 arm64 image containing the required operating-system/migration tooling and chosen FreeSWITCH packages where practical.
+8. Test the exact image and FreeSWITCH on representative hardware for the selected profile.
+9. Build/test a RAM-rescue environment on the passive node for that profile.
+10. Take an off-node full 32 GB SD-card image before destructive work.
+11. Keep the active CentOS node untouched until the passive Debian node has passed production soak.
 
 ## Workstreams
 
@@ -61,12 +91,14 @@ Both Pi estates use 32 GB SD cards. When retaining both full raw card images on 
 - Select `PI3-CENTOS7` or `PI4-CENTOS9`.
 - Run preflight on both nodes.
 - Prove model, architecture and source OS version match the selected profile.
+- Install/verify `kexec-tools` using `yum` on CentOS 7 or `dnf` on CentOS 9.
+- Verify the running kernel supports kexec.
 - Record active/passive state and network configuration.
 - Export FreeSWITCH configuration/runtime status from both nodes.
 - Record package/service inventory and call-flow dependencies.
 - Establish acceptance criteria and rollback triggers.
 
-**Exit gate:** both nodes fully identified, profile matches, current service behaviour documented and FreeSWITCH exports copied to secure off-node storage with verified checksums.
+**Exit gate:** both nodes fully identified, profile matches, `kexec-tools`/kernel capability is known, current service behaviour documented and FreeSWITCH exports copied to secure off-node storage with verified checksums.
 
 ### WS2 - FreeSWITCH configuration migration package
 
@@ -107,6 +139,7 @@ Validate service start, `fs_cli`, required modules, migrated configuration, SIP 
 
 ### WS5 - RAM-rescue proof on passive node
 
+- Confirm `kexec-tools` and running-kernel kexec support.
 - Build rescue initramfs using a kernel/modules combination suitable for the selected hardware/source-OS profile.
 - Configure rescue SSH on a separate port.
 - Load with `kexec` without executing first.
@@ -180,6 +213,7 @@ Before SD overwrite, normal reboot returns to the existing CentOS installation. 
 
 - Administration laptop prerequisite gate passed and evidence recorded.
 - Selected profile matches the actual Pi model and source CentOS version.
+- `kexec-tools` and running-kernel kexec support were verified before rescue testing.
 - Both Raspberry Pi nodes run Debian 13.
 - Required FreeSWITCH version/modules are installed and documented.
 - Each node's intended FreeSWITCH configuration has been exported, restored and validated.
