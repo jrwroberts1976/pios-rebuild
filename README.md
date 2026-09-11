@@ -14,6 +14,7 @@ Remote, staged migration toolkit for rebuilding a two-node Raspberry Pi 3 FreeSW
 - The exported FreeSWITCH configuration is restored onto Debian only after the required Debian FreeSWITCH packages/modules are present.
 - FreeSWITCH on Debian 13 is a formal test gate before production failover.
 - All destructive scripts fail closed and require explicit confirmation.
+- A Windows administration laptop can use the PowerShell controller scripts while low-level Pi operations remain Linux/bash inside the target or RAM rescue environment.
 
 ## Target sequence
 
@@ -53,7 +54,9 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 │   ├── RUNBOOK.md
 │   ├── TEST_PLAN.md
 │   ├── IMAGE_BUILD.md
-│   └── FREESWITCH_TEST_PLAN.md
+│   ├── FREESWITCH_TEST_PLAN.md
+│   ├── POWERSHELL.md
+│   └── RELEASE_DAY.md
 └── scripts/
     ├── lib/common.sh
     ├── 00-admin-laptop-preflight.sh
@@ -67,21 +70,70 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
     ├── 06-write-debian.sh
     ├── 07-validate-debian.sh
     ├── 07a-restore-freeswitch-config.sh
-    └── 08-freeswitch-smoke-test.sh
+    ├── 08-freeswitch-smoke-test.sh
+    └── powershell/
+        ├── 00-admin-laptop-preflight.ps1
+        ├── Invoke-PiosRemoteStage.ps1
+        ├── 02-full-sd-backup.ps1
+        ├── Copy-PiosArtifacts.ps1
+        └── 05-connect-rescue.ps1
 ```
+
+## Windows / PowerShell operation
+
+Windows PowerShell/PowerShell 7 is supported as the administration-laptop control shell. Read `docs/POWERSHELL.md` for the end-to-end command sequence.
+
+The PowerShell scripts do not replace the Linux safety checks. They stage and invoke the tested Linux scripts over SSH, retrieve evidence and take rollback images. The actual RAM-rescue and SD-card write checks remain on the Raspberry Pi/rescue environment so they can directly verify the hardware, mounted filesystems and target block device.
+
+Run the Windows preflight with:
+
+```powershell
+pwsh .\scripts\powershell\00-admin-laptop-preflight.ps1 `
+  -Router <router-ip> `
+  -Active <user@active-pi-ip> `
+  -Passive <user@passive-pi-ip> `
+  -MinFreeGB 80
+```
+
+For two 32 GB SD cards, **80 GB free on the laptop is the recommended working minimum** when retaining both full raw rollback images plus the Debian image, configuration exports, checksums and evidence.
+
+## Release-day document
+
+Use `docs/RELEASE_DAY.md` as the operator's **on-the-day change document**. It contains:
+
+- the change record and actual node values;
+- a 3-4 hour first-passive-node working window;
+- PowerShell commands in release order;
+- GO/NO-GO gates before every major transition;
+- the exact point at which the change becomes destructive;
+- stop conditions and rollback decisions;
+- end-of-day acceptance fields;
+- a separate later production-failover release after the passive soak.
+
+The full `docs/RUNBOOK.md` remains the engineering reference. `RELEASE_DAY.md` is intended to be the shorter document followed during the maintenance window.
 
 ## Administration laptop prerequisite
 
 Read `docs/ADMIN_LAPTOP_PREREQUISITES.md` first. The workstation must have stable VPN connectivity, key-based SSH access to both Pi nodes, enough protected local storage for the rollback images and migration artifacts, the required CLI tools, and power/sleep settings suitable for long transfers.
 
-Run the non-destructive workstation check before starting:
+Linux/WSL example:
 
 ```bash
 ./scripts/00-admin-laptop-preflight.sh \
   --router <router-ip> \
   --active <user@active-pi-ip> \
   --passive <user@passive-pi-ip> \
-  --min-free-gb <calculated-minimum>
+  --min-free-gb 80
+```
+
+PowerShell example:
+
+```powershell
+pwsh .\scripts\powershell\00-admin-laptop-preflight.ps1 `
+  -Router <router-ip> `
+  -Active <user@active-pi-ip> `
+  -Passive <user@passive-pi-ip> `
+  -MinFreeGB 80
 ```
 
 ## FreeSWITCH configuration migration
