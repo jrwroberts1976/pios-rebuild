@@ -4,17 +4,30 @@
 
 Prove the migration mechanism, Debian image, FreeSWITCH workload and two-node failover before both CentOS systems are retired.
 
+## Supported profiles
+
+The test evidence must identify one of these profiles:
+
+| Profile | Source | Target |
+| --- | --- | --- |
+| `PI3-CENTOS7` | Raspberry Pi 3 / CentOS 7 | Debian 13 arm64 |
+| `PI4-CENTOS9` | Raspberry Pi 4 / CentOS 9 | Debian 13 arm64 |
+
+A pass for one profile does **not** automatically approve the other. In particular, rescue boot, kernel/initramfs/DTB compatibility and exact-image boot testing are hardware/source-OS specific.
+
 ## Test stages
 
 ### T0 - Documentation and baseline
 
 Pass criteria:
 
+- migration profile selected and recorded;
 - both Pi identities recorded;
+- Raspberry Pi model and current CentOS version match the profile;
 - active/passive roles confirmed;
 - IP/MAC/gateway/DNS recorded;
 - current FreeSWITCH version and module list captured;
-- current config backed up;
+- current configuration backed up;
 - current failover method documented;
 - critical call paths listed.
 
@@ -33,20 +46,24 @@ Pass criteria:
 
 ### T2 - Golden image boot validation
 
-On representative Raspberry Pi 3 hardware where available:
+Boot the **exact checksum-approved image** on representative hardware for every profile on which it will be used.
 
-1. boot image;
-2. confirm wired Ethernet;
-3. confirm SSH;
-4. confirm DHCP/static behaviour as designed;
-5. confirm time sync;
-6. confirm package manager works;
-7. reboot twice;
-8. confirm clean startup after each reboot.
+For `PI3-CENTOS7`, test on representative Raspberry Pi 3 hardware. For `PI4-CENTOS9`, test on representative Raspberry Pi 4 hardware.
+
+Pass criteria:
+
+1. image boots;
+2. wired Ethernet works;
+3. SSH works;
+4. DHCP/static behaviour works as designed;
+5. time sync works;
+6. package manager works;
+7. storage is detected correctly;
+8. two reboot cycles complete cleanly.
 
 ### T3 - FreeSWITCH Debian test
 
-Execute `FREESWITCH_TEST_PLAN.md`.
+Execute `FREESWITCH_TEST_PLAN.md` against the exact image/profile combination.
 
 Minimum gate before production-site use:
 
@@ -60,12 +77,14 @@ Minimum gate before production-site use:
 
 ### T4 - Passive-node preflight
 
-Run `01-preflight.sh` and `03-rescue-readiness.sh`.
+Run `01-preflight.sh` and `03-rescue-readiness.sh` using the selected profile configuration.
 
 Pass criteria:
 
-- expected Pi model/architecture;
-- known target SD device;
+- exact Pi model matches profile;
+- architecture matches profile;
+- CentOS ID/version matches profile;
+- known whole SD-card device;
 - wired interface up;
 - route to VPN router/default gateway;
 - kexec capability present;
@@ -78,24 +97,27 @@ Create and verify:
 
 - configuration archive;
 - package/service inventory;
-- full off-node SD image.
+- FreeSWITCH export and checksum;
+- full off-node 32 GB SD-card image and checksum.
 
-Where a spare test device exists, restore the captured image to spare media and prove it is readable/bootable. If no spare media exists, at minimum verify compression/checksum and partition metadata from the stored image.
+Where a spare test device exists, restore the captured image to spare media and prove it is readable/bootable. If no spare media exists, at minimum verify checksum and partition metadata from the stored image.
 
 ### T6 - RAM-rescue round trip
 
 Test only on the passive node while the active CentOS node remains in service.
 
+For the selected profile, use the rescue build specifically validated for that Pi model/source CentOS version.
+
 Sequence:
 
 ```text
-CentOS
-  -> load rescue
+Current CentOS
+  -> load profile-specific rescue
   -> enter RAM rescue
   -> reconnect over VPN/SSH
-  -> verify network and SD visibility
+  -> verify RAM-root, network and SD visibility
   -> reboot without writing disk
-  -> CentOS returns
+  -> same CentOS installation returns
 ```
 
 Pass criteria:
@@ -105,11 +127,11 @@ Pass criteria:
 - SD card is visible but not used as rescue root;
 - gateway reachable;
 - rescue survives long enough for administration;
-- normal reboot returns to CentOS and FreeSWITCH state is unchanged.
+- normal reboot returns to the original CentOS version and FreeSWITCH state is unchanged.
 
 ### T7 - Passive Debian migration
 
-Use the exact image checksum already approved in T1-T3.
+Use the exact image checksum already approved in T1-T3 for the target hardware family.
 
 Pass criteria after write, before reboot:
 
@@ -119,8 +141,7 @@ Pass criteria after write, before reboot:
 - Debian root filesystem mounts;
 - `/etc/os-release` reports Debian 13;
 - node-specific hostname/network/SSH configuration present;
-- no production secret omitted that is required for boot/service;
-- boot files present.
+- required boot files present.
 
 ### T8 - Passive first boot
 
@@ -140,19 +161,7 @@ Pass criteria:
 
 Target observation: 24-48 hours.
 
-At start, midpoint and end record:
-
-- uptime;
-- CPU/load;
-- RAM/swap;
-- filesystem usage;
-- temperature where available;
-- FreeSWITCH process state;
-- SIP gateway/profile state;
-- journal warnings/errors;
-- monitoring/logging state.
-
-Exercise test calls/routes throughout the window where possible.
+At start, midpoint and end record uptime, CPU/load, RAM/swap, filesystem usage, temperature, FreeSWITCH process state, SIP gateway/profile state, journal warnings/errors and monitoring/logging state. Exercise test calls/routes throughout the window where possible.
 
 ### T10 - Controlled production failover
 
@@ -165,43 +174,33 @@ Preconditions:
 
 After failover immediately test critical inbound/outbound calls, RTP, DTMF and registration state.
 
-Pass criteria:
-
-- no critical call-path failure;
-- no one-way audio;
-- no persistent registration failure;
-- node resource use remains acceptable.
-
 ### T11 - Production soak
 
-Target observation: 48 hours.
+Target observation: 48 hours. Keep the former active CentOS node untouched and available for rollback throughout this window.
 
-Keep the former active CentOS node untouched and available for rollback throughout this window.
-
-Pass criteria:
-
-- no Severity 1/2 issue;
-- stable registrations;
-- expected call behaviour;
-- acceptable CPU/RAM/storage/temperature;
-- no repeated FreeSWITCH or kernel faults.
+Pass criteria: no Severity 1/2 issue, stable registrations, expected call behaviour, acceptable resources and no repeated FreeSWITCH/kernel faults.
 
 ### T12 - Second-node rebuild
 
-Repeat the proven process against the former active node while Debian carries production service.
+Repeat the proven process against the former active node while Debian carries production service. The same migration profile must still match that node unless preflight explicitly proves otherwise.
 
 ### T13 - Resilience acceptance
 
-With both nodes on Debian:
+With both nodes on Debian, validate roles, deliberate failover/failback, critical calls, individual reboot behaviour and monitoring/logging identity.
 
-- validate active/passive roles;
-- fail over intentionally;
-- perform critical calls;
-- reboot passive;
-- restore passive and confirm readiness;
-- reboot/fail active according to the supported mechanism;
-- prove service survives as designed;
-- confirm monitoring and logs distinguish both nodes.
+## Additional Pi 4 / CentOS 9 tests
+
+For `PI4-CENTOS9`, explicitly record:
+
+- Pi 4 model string;
+- CentOS 9 kernel and boot layout;
+- Pi 4 Ethernet driver availability in rescue;
+- Pi 4 SD/MMC visibility in rescue;
+- DTB used by the rescue build;
+- successful `CentOS 9 -> RAM rescue -> CentOS 9` round trip;
+- successful boot of the exact Debian 13 image on Pi 4.
+
+Do not inherit those results from a Pi 3 test run.
 
 ## Evidence
 
@@ -210,8 +209,12 @@ Store for each test:
 ```text
 Date/time:
 Engineer:
+Migration profile:
 Node:
+Pi model:
+Source OS/version:
 Image SHA512:
+Rescue build ID/checksum:
 Repository commit:
 Test ID:
 Result: PASS/FAIL/BLOCKED
@@ -222,16 +225,8 @@ Defect/reference:
 
 ## Timeline summary
 
-A cautious testing sequence is expected to span roughly 5-7 elapsed days because the design deliberately includes a 24-48 hour passive soak and a further 48 hour production soak before the second node is rebuilt.
+A cautious sequence is expected to span roughly 5-7 elapsed days because it deliberately includes a 24-48 hour passive soak and a further 48 hour production soak before the second node is rebuilt.
 
-Suggested schedule:
+For the first node of a newly proven profile, book **3-4 hours** for the hands-on migration. Once the profile is proven, a later node should normally take about **1.5-2.5 hours**, with 2-3 hours a sensible working allowance.
 
-- Day 1: baseline, image build and static tests
-- Day 2: FreeSWITCH tests and rescue proof
-- Day 3: passive-node rebuild and start passive soak
-- Day 4: continue passive soak; resolve minor issues
-- Day 5: controlled failover and production acceptance
-- Days 5-7: production soak
-- Day 7: second-node rebuild and dual-node resilience acceptance
-
-If a Severity 1 or Severity 2 defect appears, the elapsed schedule pauses until it is resolved and the affected test stage is repeated.
+If a Severity 1 or Severity 2 defect appears, the schedule pauses until it is resolved and the affected test stage is repeated.
