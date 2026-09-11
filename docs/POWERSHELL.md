@@ -25,6 +25,7 @@ The full SD-card backup helper intentionally uses `cmd.exe` output redirection s
 
 ```text
 scripts/powershell/
+├── 00-setup-environment.ps1
 ├── 00-admin-laptop-preflight.ps1
 ├── Invoke-PiosRemoteStage.ps1
 ├── 02-full-sd-backup.ps1
@@ -33,6 +34,69 @@ scripts/powershell/
 ```
 
 The existing Linux scripts remain under `scripts/` and are staged/executed on the Raspberry Pi by `Invoke-PiosRemoteStage.ps1`.
+
+## 0. Set up or refresh the Git environment
+
+Do this **before the maintenance/change window starts**. Once the exact release commit has been recorded, do not run another `git pull` during the migration.
+
+If the repository is not already on the laptop:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+
+git clone https://github.com/jrwroberts1976/pios-rebuild.git $RepoPath
+Set-Location $RepoPath
+```
+
+If it already exists, move into it:
+
+```powershell
+$RepoPath = Join-Path $HOME 'pios-rebuild'
+Set-Location $RepoPath
+```
+
+Check that there are no uncommitted local changes before updating:
+
+```powershell
+git status --short
+```
+
+The expected result for the release checkout is **no output**. If files are listed, review them and either commit, stash or deliberately discard them before continuing.
+
+Refresh the local checkout from GitHub:
+
+```powershell
+git fetch origin --prune
+git checkout main
+git pull --ff-only origin main
+```
+
+Then record exactly what will be used for the release:
+
+```powershell
+git status
+git log -1 --oneline
+$ReleaseCommit = (git rev-parse HEAD).Trim()
+Write-Host "Release commit: $ReleaseCommit"
+```
+
+`git pull --ff-only` is intentional. If the local branch has diverged, the setup should stop rather than silently create a merge commit on the administration laptop.
+
+Once the repository has already been cloned, the project includes a helper that performs the same clean-tree, fetch, checkout, fast-forward pull and commit-recording gates:
+
+```powershell
+pwsh .\scripts\powershell\00-setup-environment.ps1 `
+  -RepoPath $RepoPath `
+  -Branch main
+```
+
+Required result:
+
+```text
+ENVIRONMENT_SETUP=PASS
+```
+
+Record the full commit SHA in the release/change record. From this point until the change is completed or abandoned, **do not update the repository again**. This ensures that every command executed during the release comes from the exact reviewed version.
 
 ## 1. Run the Windows laptop preflight
 
