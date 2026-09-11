@@ -169,7 +169,109 @@ For Pi 4 / CentOS 9 start from:
 config/site-pi4-centos9.env.example
 ```
 
-Copy it to protected storage outside the repository and populate the actual node values. Production secrets must not be committed to Git.
+## Create the real node configuration safely
+
+The file under `config/` is a **template only**. Do not put real site values or credentials into the copy that lives inside the Git repository.
+
+Create a separate protected working directory outside the repository and copy the template there. For example:
+
+```powershell
+$SecurePath = 'C:\pios-rebuild-secure'
+
+New-Item -ItemType Directory `
+  -Path $SecurePath `
+  -Force | Out-Null
+
+Copy-Item `
+  '.\config\site-pi4-centos9.env.example' `
+  "$SecurePath\passive-site.env"
+
+Copy-Item `
+  '.\config\site-pi4-centos9.env.example' `
+  "$SecurePath\active-site.env"
+```
+
+The intended layout is:
+
+```text
+C:\Users\<engineer>\pios-rebuild\
+└── config\
+    └── site-pi4-centos9.env.example   <-- generic template; safe to keep in Git
+
+C:\pios-rebuild-secure\
+├── passive-site.env                   <-- real passive-node values; never commit
+└── active-site.env                    <-- real active-node values; never commit
+```
+
+Edit the two files under `C:\pios-rebuild-secure\` and replace the example values with the real values for each node. Depending on the approved template, this can include items such as the migration profile, expected Pi model, architecture, source OS version, hostname/IP information, network interface, confirmed whole SD-card device, RAM-rescue paths/port and the approved Debian image checksum.
+
+Example shape:
+
+```text
+MIGRATION_PROFILE='PI4-CENTOS9'
+
+EXPECTED_MODEL_REGEX='^Raspberry Pi 4'
+EXPECTED_ARCH='aarch64'
+EXPECTED_SOURCE_OS_ID='centos'
+EXPECTED_SOURCE_OS_VERSION='9'
+
+TARGET_HOST='<real-passive-node-address>'
+TARGET_HOSTNAME='<real-passive-hostname>'
+TARGET_DISK='/dev/mmcblk0'
+NETWORK_INTERFACE='eth0'
+
+RESCUE_SSH_PORT='2222'
+RESCUE_KERNEL='<approved-pi4-rescue-kernel-path>'
+RESCUE_INITRAMFS='<approved-pi4-rescue-initramfs-path>'
+RESCUE_DTB='<approved-pi4-rescue-dtb-path>'
+
+DEBIAN_IMAGE_SHA512='<approved-image-sha512>'
+```
+
+The exact variable names must come from the checked-in example file. **Do not invent or rename variables on release day just to make a check pass.**
+
+Create one node-specific configuration file per Pi. The passive file must describe the passive Pi being rebuilt, and the active file must describe the active peer.
+
+The completed files may contain infrastructure details or secrets such as real IP addresses, hostnames, SIP/gateway credentials, TLS/private-key paths, API tokens or other production-specific values. For that reason they **must never be added, committed or pushed to Git**. Even if a secret is removed from a later version, it can remain in Git history.
+
+Where practical, keep the secure directory on encrypted local storage and restrict its permissions. On a Windows workstation an example is:
+
+```powershell
+$SecurePath = 'C:\pios-rebuild-secure'
+
+icacls $SecurePath /inheritance:r
+icacls $SecurePath /grant:r "$env:USERNAME:(OI)(CI)F"
+icacls $SecurePath
+```
+
+Before continuing, confirm that the populated files are outside the repository:
+
+```powershell
+$RepoPath = (Resolve-Path '.').Path
+$PassiveConfig = 'C:\pios-rebuild-secure\passive-site.env'
+$ActiveConfig  = 'C:\pios-rebuild-secure\active-site.env'
+
+Write-Host "Repository:     $RepoPath"
+Write-Host "Passive config: $PassiveConfig"
+Write-Host "Active config:  $ActiveConfig"
+
+git status --short
+```
+
+`git status --short` must not show either populated `.env` file.
+
+The release commands should then reference the protected file by its full path, for example:
+
+```powershell
+$Config = 'C:\pios-rebuild-secure\passive-site.env'
+
+pwsh .\scripts\powershell\Invoke-PiosRemoteStage.ps1 `
+  -Target <user@passive-pi-ip> `
+  -RemoteScript 01-preflight.sh `
+  -SiteConfig $Config
+```
+
+**NO-GO:** if a populated production configuration has been created inside the repository, appears in `git status`, or has already been committed/pushed, stop the release and treat it as a potential credentials/information exposure before continuing.
 
 ## What the pre-flight must prove
 
