@@ -53,48 +53,57 @@ The largest timing variables are the speed of the full 32 GB rollback-image tran
 
 ```text
 .
-├── README.md
-├── higher-risk-fully-automated-script.md
+├── README.md                                  # project overview and operator entry point
+├── higher-risk-fully-automated-script.md      # design for the future one-button workflow
 ├── .gitignore
-├── .github/workflows/shellcheck.yml
+├── .github/
+│   └── workflows/
+│       └── shellcheck.yml                     # Linux shell validation
 ├── config/
-│   ├── site.env.example
-│   └── site-pi4-centos9.env.example
+│   ├── site.env.example                      # PI3-CENTOS7 profile template
+│   └── site-pi4-centos9.env.example          # PI4-CENTOS9 profile template
 ├── docs/
-│   ├── ADMIN_LAPTOP_PREREQUISITES.md
-│   ├── PROJECT_PLAN.md
-│   ├── RUNBOOK.md
-│   ├── TEST_PLAN.md
-│   ├── IMAGE_BUILD.md
-│   ├── FREESWITCH_TEST_PLAN.md
-│   ├── PI4_CENTOS9.md
-│   ├── POWERSHELL.md
-│   ├── RELEASE_DAY.md
-│   ├── RELEASE_RECORD.md
-│   └── RELEASE_RECORD_TEMPLATE.md
-└── scripts/
-    ├── lib/common.sh
-    ├── 00-admin-laptop-preflight.sh
-    ├── 00-build-debian-image.sh
-    ├── 01-preflight.sh
-    ├── 02-backup-inventory.sh
-    ├── 02a-export-freeswitch-config.sh
-    ├── 03-rescue-readiness.sh
-    ├── 04-load-rescue.sh
-    ├── 05-enter-rescue.sh
-    ├── 06-write-debian.sh
-    ├── 07-validate-debian.sh
-    ├── 07a-restore-freeswitch-config.sh
-    ├── 08-freeswitch-smoke-test.sh
-    └── powershell/
-        ├── 00-setup-environment.ps1
-        ├── 00-admin-laptop-preflight.ps1
-        ├── 01-create-release-record.ps1
-        ├── Invoke-PiosRemoteStage.ps1
-        ├── 02-full-sd-backup.ps1
-        ├── Copy-PiosArtifacts.ps1
-        └── 05-connect-rescue.ps1
+│   ├── ADMIN_LAPTOP_PREREQUISITES.md         # workstation/VPN/storage prerequisites
+│   ├── PROJECT_PLAN.md                        # staged migration project plan
+│   ├── RUNBOOK.md                             # detailed engineering runbook
+│   ├── TEST_PLAN.md                           # end-to-end acceptance tests
+│   ├── IMAGE_BUILD.md                         # Debian 13 golden-image build
+│   ├── FREESWITCH_TEST_PLAN.md                # telephony acceptance tests
+│   ├── PI4_CENTOS9.md                         # Pi 4 / CentOS 9 profile details
+│   ├── POWERSHELL.md                          # Windows/PowerShell operating guide
+│   ├── RELEASE_DAY.md                         # on-the-day change procedure
+│   ├── RELEASE_RECORD.md                      # electronic release-record guidance
+│   └── RELEASE_RECORD_TEMPLATE.md             # generated-record template
+├── scripts/
+│   ├── lib/
+│   │   └── common.sh                          # shared Linux safety functions
+│   ├── 00-admin-laptop-preflight.sh
+│   ├── 00-build-debian-image.sh
+│   ├── 01-preflight.sh
+│   ├── 02-backup-inventory.sh
+│   ├── 02a-export-freeswitch-config.sh
+│   ├── 03-rescue-readiness.sh
+│   ├── 04-load-rescue.sh
+│   ├── 05-enter-rescue.sh
+│   ├── 06-write-debian.sh
+│   ├── 07-validate-debian.sh
+│   ├── 07a-restore-freeswitch-config.sh
+│   ├── 08-freeswitch-smoke-test.sh
+│   └── powershell/
+│       ├── 00-setup-environment.ps1            # clone/pull/pin release commit
+│       ├── 00-admin-laptop-preflight.ps1       # Windows readiness/VPN/storage check
+│       ├── 01-create-release-record.ps1        # detect target/profile and create release record
+│       ├── 02-full-sd-backup.ps1               # raw 32 GB rollback image over SSH
+│       ├── 05-connect-rescue.ps1               # reconnect to RAM rescue
+│       ├── Copy-PiosArtifacts.ps1              # copy/checksum migration evidence
+│       └── Invoke-PiosRemoteStage.ps1           # stage/run Linux scripts over SSH
+└── releases/                                   # generated locally at runtime; ignored by Git
+    └── <change-reference>-<timestamp>.md        # live electronic release evidence
 ```
+
+`releases/` is created locally by the release-record workflow and is intentionally excluded by `.gitignore`; it is shown above because it is part of the operator's working layout even though it is not committed to the repository.
+
+The higher-risk one-button workflow is currently a **design only** in `higher-risk-fully-automated-script.md`. `ONE-BUTTON-REBUILD.cmd` and `Invoke-FullyAutomatedRebuild.ps1` are therefore not shown as tracked files until those implementations actually exist.
 
 ## Windows / PowerShell operation
 
