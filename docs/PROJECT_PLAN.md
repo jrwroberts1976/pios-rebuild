@@ -10,6 +10,34 @@ The site has two Pi nodes. The passive node is the proving node. The active Cent
 
 ## Prerequisites
 
+### Administration laptop/workstation
+
+The laptop used to connect through the site VPN is part of the recovery design and must pass `docs/ADMIN_LAPTOP_PREREQUISITES.md` before either Pi is touched.
+
+At minimum it must have:
+
+- stable router-hosted VPN access to the remote site;
+- key-based SSH access to both Pi nodes;
+- SSH/SCP or SFTP, rsync, Git, curl/wget, tar, gzip, xz, zstd, checksum tools, `dd` and `pv`;
+- enough protected local disk space for both full SD-card images, the Debian image, FreeSWITCH exports and test evidence;
+- mains power and sleep/hibernate disabled during migration;
+- the migration repository checked out at a known commit;
+- the verified CentOS rollback images immediately accessible throughout the migration.
+
+Run:
+
+```bash
+./scripts/00-admin-laptop-preflight.sh \
+  --router <router-ip> \
+  --active <user@active-pi-ip> \
+  --passive <user@passive-pi-ip> \
+  --min-free-gb <calculated-minimum>
+```
+
+**Exit gate:** `ADMIN_LAPTOP_PREFLIGHT=PASS` and the manual power/sleep/VPN gates are confirmed.
+
+### Site and platform prerequisites
+
 1. Confirm router-hosted VPN remains available independently of either Pi.
 2. Confirm both Pi roles, IPs, MAC addresses, hostnames and current FreeSWITCH responsibilities.
 3. Export and securely copy off-node the complete FreeSWITCH configuration/runtime manifest from **each** node using `scripts/02a-export-freeswitch-config.sh`.
@@ -21,6 +49,19 @@ The site has two Pi nodes. The passive node is the proving node. The active Cent
 9. Keep the active CentOS node untouched until the passive Debian node has passed production soak.
 
 ## Workstreams
+
+### WS0 - Administration workstation readiness
+
+- establish and test the router VPN;
+- verify SSH keys against both nodes;
+- install required local CLI tools;
+- calculate storage required from the actual SD-card capacities;
+- create protected artifact directories;
+- record the exact repository commit used;
+- verify the laptop will remain powered and awake;
+- prove the VPN is stable enough for sustained backup/image transfer.
+
+**Exit gate:** workstation preflight passes and rollback artifacts can be retained locally throughout the change.
 
 ### WS1 - Discovery and baseline
 
@@ -63,13 +104,13 @@ On Debian, install/reconcile the required FreeSWITCH modules first, then use `sc
 - Prepare SSH key injection and network configuration process.
 - Add the selected FreeSWITCH installation/bootstrap mechanism.
 - Produce an image manifest and checksum.
-- Ensure any temporary SignalWire repository token used during image construction is removed before the artifact is finalised.
+- Ensure any temporary package-repository credential used during image construction is removed before the artifact is finalised.
 
 **Exit gate:** Reproducible image passes image validation and boots successfully on representative Raspberry Pi 3 hardware where available.
 
 ### WS4 - FreeSWITCH Debian validation
 
-FreeSWITCH 1.11 introduced Debian 13 Trixie support. The project must still prove the exact selected 1.11.x version, modules, migrated configuration and telephony behaviour required by this site.
+The project must prove the exact selected FreeSWITCH version, modules, migrated configuration and telephony behaviour required by this site on Debian 13.
 
 Validate:
 
@@ -149,6 +190,7 @@ This is an elapsed testing plan, not a promise of implementation duration.
 
 | Stage | Indicative window | Purpose |
 | --- | ---: | --- |
+| Admin laptop/VPN readiness | 1-2 hours | Tooling, storage, keys and sustained connectivity |
 | Discovery + FreeSWITCH config export | 0.5 day | Capture current state, config and hard prerequisites |
 | Golden image build + static validation | 0.5-1 day | Produce repeatable Debian image |
 | FreeSWITCH Debian/config-restore tests | 1 day | Prove packages/modules, restored config and basic calling |
@@ -190,8 +232,9 @@ Do not rebuild the original active CentOS node until the Debian node has complet
 
 ## Definition of done
 
+- Administration laptop prerequisite gate passed and evidence recorded.
 - Both Raspberry Pi nodes run Debian 13.
-- Required FreeSWITCH 1.11.x version/modules are installed and documented.
+- Required FreeSWITCH version/modules are installed and documented.
 - Each node's intended FreeSWITCH configuration has been exported, restored and validated.
 - All critical inbound/outbound call paths pass.
 - RTP/DTMF/codec behaviour passes.
