@@ -85,7 +85,39 @@ For Pi 4 / CentOS 9 use:
 config/site-pi4-centos9.env.example
 ```
 
-On both CentOS nodes run the preflight, generic inventory and FreeSWITCH export stages. From PowerShell, use `Invoke-PiosRemoteStage.ps1`; from Linux/WSL the scripts can be invoked directly.
+Before the normal node preflight, run the dedicated **source kexec OS readiness audit on both CentOS nodes**:
+
+```bash
+sudo bash scripts/00-source-kexec-preflight.sh
+```
+
+This stage is read-only. It does not load a kernel, execute kexec, reboot, change boot files or write the SD card.
+
+Record the final result:
+
+```text
+KEXEC_OS_READY=YES
+```
+
+or:
+
+```text
+KEXEC_OS_READY=PROVISIONAL
+```
+
+or:
+
+```text
+KEXEC_OS_READY=NO
+```
+
+Rules:
+
+- `YES` means the static source-OS prerequisites pass, but a same-kernel load/unload proof is still required before rescue execution.
+- `PROVISIONAL` means no hard failure was detected but one or more items need review; perform and record the controlled same-kernel load/unload proof documented in `SOURCE_PI_PREREQUISITES.md` before proceeding to rescue.
+- `NO` is a hard stop. Do not attempt `kexec -e` or build a production migration around that kernel until the failed prerequisite is resolved.
+
+Then run the normal preflight, generic inventory and FreeSWITCH export stages. From PowerShell, use `Invoke-PiosRemoteStage.ps1`; from Linux/WSL the scripts can be invoked directly.
 
 The preflight must prove:
 
@@ -99,7 +131,7 @@ The preflight must prove:
 
 Copy all inventory and FreeSWITCH export artifacts to the administration laptop/approved secure storage and verify checksums.
 
-**GO gate:** both node inventories and both verified FreeSWITCH exports are safely off-node.
+**GO gate:** both node inventories and both verified FreeSWITCH exports are safely off-node, and neither source node has `KEXEC_OS_READY=NO`.
 
 ---
 
@@ -130,6 +162,8 @@ Run `03-rescue-readiness.sh` using the selected profile configuration.
 The gate checks Raspberry Pi identity, architecture/kernel, target SD device, wired network/default route, kexec userspace/kernel capability, memory and candidate kernel/initramfs/DTB files.
 
 If it reports `RESCUE_READY=NO`, stop.
+
+If the earlier source kexec audit returned `PROVISIONAL`, the controlled same-kernel `kexec -l` / `kexec -u` proof must already have passed and been recorded before this phase is approved.
 
 ---
 
@@ -286,4 +320,4 @@ With both nodes on Debian 13, validate unique node identity/IPs, normal active/p
 
 # Absolute stop conditions
 
-Stop rather than improvise if the admin-laptop prerequisite gate fails; VPN/router connectivity is unstable; profile/model/source OS does not match; active/passive role is uncertain; target disk identity is uncertain; rollback image or FreeSWITCH export is unavailable/suspect; rescue proof has not passed for the exact profile; rescue cannot be reached; Debian image checksum differs; or FreeSWITCH Debian testing has an unresolved Severity 1/2 defect.
+Stop rather than improvise if the admin-laptop prerequisite gate fails; VPN/router connectivity is unstable; profile/model/source OS does not match; active/passive role is uncertain; target disk identity is uncertain; rollback image or FreeSWITCH export is unavailable/suspect; source kexec readiness is `NO`; required same-kernel load/unload proof has not passed where needed; rescue proof has not passed for the exact profile; rescue cannot be reached; Debian image checksum differs; or FreeSWITCH Debian testing has an unresolved Severity 1/2 defect.
